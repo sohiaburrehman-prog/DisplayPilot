@@ -1,0 +1,45 @@
+DISPLAYPILOT PRIVACY POLICY
+
+Last updated: June 2026
+
+DisplayPilot is a local Windows utility. This policy explains what information the Software handles.
+
+1. SUMMARY
+DisplayPilot is designed to run on your PC without sending your personal data to DisplayPilot servers. The Software does not include analytics, advertising, or cloud accounts.
+
+2. INFORMATION PROCESSED LOCALLY
+The Software may read and apply:
+  • connected monitor names, resolutions, refresh rates, and layout;
+  • Windows display configuration via operating-system APIs;
+  • a local log file at %LOCALAPPDATA%\DisplayPilot\log.txt for troubleshooting;
+  • optional "Start with Windows" registry entry under your user profile (HKCU).
+
+This information stays on your device unless you choose to share log files yourself.
+
+3. INFORMATION NOT COLLECTED
+DisplayPilot does not intentionally collect:
+  • names, email addresses, or account credentials;
+  • browsing history or game activity;
+  • precise location;
+  • payment information.
+
+4. NETWORK ACTIVITY
+The Software does not require an internet connection to swap primary displays. No telemetry endpoints are built into the core application.
+
+5. THIRD PARTIES
+DisplayPilot uses Microsoft .NET and Windows APIs only. Your use of Windows is subject to Microsoft's terms and privacy practices.
+
+6. DATA RETENTION
+Log files remain on your device until you delete them or uninstall the Software. Uninstalling removes the application files under %LOCALAPPDATA%\DisplayPilot\ except items you created separately.
+
+7. CHILDREN
+The Software is a general-purpose system utility and is not directed at children under 13.
+
+8. CHANGES
+This policy may be updated in future releases. The "Last updated" date will change when it does.
+
+9. YOUR CHOICES
+You can disable "Start with Windows" in the tray menu, delete log.txt, and uninstall DisplayPilot at any time via Windows Settings or the supplied uninstaller.
+
+10. CONTACT
+Privacy questions may be sent to Sohiab Rehman at sohiab.rehman@pm.me.

@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Forms;
 
 using PrimaryDisplaySwap.Controls;
@@ -31,14 +32,21 @@ internal sealed class TrayService : IDisposable
         {
             Renderer = new DarkMenuRenderer(),
             ShowImageMargin = false,
-            Padding = new Padding(4, 6, 4, 6),
+            Font = AppTheme.BodyFont,
+            Padding = new Padding(6, 8, 6, 8),
+            AutoSize = true,
         };
-        _menu.Opening += (_, _) => RefreshMenu();
+        _menu.Opening += (_, _) =>
+        {
+            TrayUiState.TrayMenuOpen = true;
+            RefreshMenu();
+        };
+        _menu.Closed += (_, _) => TrayUiState.TrayMenuOpen = false;
 
         _notifyIcon = new NotifyIcon
         {
             Icon = _trayIcon,
-            Text = AppInfo.AppName,
+            Text = $"{AppInfo.AppName} — right-click for menu",
             ContextMenuStrip = _menu,
             Visible = false,
         };
@@ -53,7 +61,19 @@ internal sealed class TrayService : IDisposable
 
     public void RefreshMenu()
     {
+        DisposeMenuItems(_menu.Items);
         _menu.Items.Clear();
+
+        _menu.Items.Add(CreateLabel(AppInfo.AppName, TrayMenuTags.Title));
+        _menu.Items.Add(CreateLabel($"Version {AppInfo.AppVersion} · Ctrl+Shift+M", TrayMenuTags.Subtitle));
+        _menu.Items.Add(new ToolStripSeparator());
+
+        var openItem = new ToolStripMenuItem("Open control panel");
+        openItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(openItem);
+
+        _menu.Items.Add(new ToolStripSeparator());
+        _menu.Items.Add(CreateLabel("DISPLAYS", TrayMenuTags.Section));
 
         try
         {
@@ -61,18 +81,15 @@ internal sealed class TrayService : IDisposable
 
             if (monitors.Count <= 1)
             {
-                _menu.Items.Add("Only one monitor detected").Enabled = false;
+                _menu.Items.Add(CreateDisabled("Only one monitor connected"));
             }
             else
             {
-                var header = new ToolStripMenuItem("Set primary display") { Enabled = false };
-                _menu.Items.Add(header);
-
                 foreach (var monitor in monitors)
                 {
-                    var item = new ToolStripMenuItem(monitor.DisplayLabel)
+                    var prefix = monitor.IsPrimary ? "✓ " : "   ";
+                    var item = new ToolStripMenuItem($"{prefix}{monitor.DisplayLabel}")
                     {
-                        Checked = monitor.IsPrimary,
                         Enabled = !monitor.IsPrimary,
                     };
 
@@ -83,8 +100,7 @@ internal sealed class TrayService : IDisposable
 
                 if (monitors.Count == 2)
                 {
-                    _menu.Items.Add(new ToolStripSeparator());
-                    var swapItem = new ToolStripMenuItem("Swap primary 1 ↔ 2");
+                    var swapItem = new ToolStripMenuItem("Swap primary displays");
                     swapItem.Click += (_, _) => SetPrimary(monitors.First(m => !m.IsPrimary).Index);
                     _menu.Items.Add(swapItem);
                 }
@@ -92,14 +108,10 @@ internal sealed class TrayService : IDisposable
         }
         catch (Exception ex)
         {
-            _menu.Items.Add($"Error: {ex.Message}").Enabled = false;
+            _menu.Items.Add(CreateDisabled($"Error: {ex.Message}"));
         }
 
         _menu.Items.Add(new ToolStripSeparator());
-
-        var showPanelItem = new ToolStripMenuItem("Show control panel");
-        showPanelItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
-        _menu.Items.Add(showPanelItem);
 
         var startupItem = new ToolStripMenuItem("Start with Windows")
         {
@@ -108,15 +120,142 @@ internal sealed class TrayService : IDisposable
         startupItem.Click += (_, _) => ToggleStartup(startupItem);
         _menu.Items.Add(startupItem);
 
-        var exitItem = new ToolStripMenuItem("Exit");
+        _menu.Items.Add(new ToolStripSeparator());
+
+        var legalMenu = new ToolStripMenuItem("Legal && policies");
+        legalMenu.DropDown = BuildLegalSubmenu();
+        _menu.Items.Add(legalMenu);
+
+        _menu.Items.Add(new ToolStripSeparator());
+
+        var exitItem = new ToolStripMenuItem("Exit DisplayPilot");
         exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(exitItem);
     }
 
+    private static ContextMenuStrip BuildLegalSubmenu()
+    {
+        var menu = new ContextMenuStrip
+        {
+            Renderer = new DarkMenuRenderer(),
+            ShowImageMargin = false,
+            Font = AppTheme.BodyFont,
+            Padding = new Padding(4, 6, 4, 6),
+        };
+
+        var eulaItem = new ToolStripMenuItem("End User License Agreement");
+        eulaItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.EulaTitle, LegalDocuments.LoadEula);
+        menu.Items.Add(eulaItem);
+
+        var privacyItem = new ToolStripMenuItem("Privacy Policy");
+        privacyItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.PrivacyTitle, LegalDocuments.LoadPrivacyPolicy);
+        menu.Items.Add(privacyItem);
+
+        menu.Items.Add(new ToolStripSeparator());
+
+        var helpItem = new ToolStripMenuItem("Help && support");
+        helpItem.Click += (_, _) => ShowPolicySafely("Help & support", () => AppInfo.BuildHelpText());
+        menu.Items.Add(helpItem);
+
+        menu.Items.Add(new ToolStripSeparator());
+
+        var aboutItem = new ToolStripMenuItem("About DisplayPilot");
+        aboutItem.Click += (_, _) => ShowPolicy(
+            "About",
+            BuildAboutText(),
+            $"Made by {AppInfo.AuthorName}");
+        menu.Items.Add(aboutItem);
+
+        return menu;
+    }
+
+    private static string BuildAboutText()
+    {
+        return $"""
+            {AppInfo.AppName} v{AppInfo.AppVersion}
+
+            A lightweight tray utility that changes which monitor Windows uses as the primary display — useful when games or apps always launch on the main screen.
+
+            • Open the flyout from the tray icon or press Ctrl+Shift+M
+            • Click a monitor card or use the tray menu to set primary
+            • Logs: %LOCALAPPDATA%\DisplayPilot\log.txt
+
+            DisplayPilot runs locally on your PC. See Privacy Policy for details.
+
+            Made by {AppInfo.AuthorName}
+            Help: {AppInfo.SupportEmail}
+            """;
+    }
+
+    private static ToolStripMenuItem CreateLabel(string text, string tag)
+    {
+        return new ToolStripMenuItem(text)
+        {
+            Enabled = false,
+            Tag = tag,
+            Padding = tag switch
+            {
+                TrayMenuTags.Title => new Padding(8, 6, 8, 2),
+                TrayMenuTags.Subtitle => new Padding(8, 0, 8, 4),
+                TrayMenuTags.Section => new Padding(8, 4, 8, 2),
+                _ => new Padding(8, 4, 8, 4),
+            },
+        };
+    }
+
+    private static ToolStripMenuItem CreateDisabled(string text)
+    {
+        return new ToolStripMenuItem(text) { Enabled = false };
+    }
+
+    private static void ShowPolicySafely(string title, Func<string> loadBody)
+    {
+        try
+        {
+            ShowPolicy(title, loadBody());
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Could not open {title}: {ex.Message}");
+            System.Windows.Forms.MessageBox.Show(
+                ex.Message,
+                title,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
+    private static void DisposeMenuItems(ToolStripItemCollection items)
+    {
+        foreach (ToolStripItem item in items)
+        {
+            if (item is ToolStripMenuItem { DropDown: not null } menuItem)
+            {
+                menuItem.DropDown.Dispose();
+            }
+
+            item.Dispose();
+        }
+    }
+
+    private static void ShowPolicy(string title, string body, string? subtitle = null)
+    {
+        var app = System.Windows.Application.Current;
+        if (app is null)
+        {
+            return;
+        }
+
+        app.Dispatcher.BeginInvoke(() =>
+        {
+            var window = new PolicyWindow(title, body, subtitle);
+            window.Show();
+            window.Activate();
+        });
+    }
+
     private void SetPrimary(int monitorIndex)
     {
-        // Run off the UI thread; menu stays responsive while drivers apply
-        // the new configuration.
         _ = Task.Run(() =>
         {
             try
@@ -128,7 +267,7 @@ internal sealed class TrayService : IDisposable
             catch (Exception ex)
             {
                 AppLogger.Log($"Tray SetPrimary failed: {ex.Message}");
-                MessageBox.Show(ex.Message, "Could not set primary display",
+                System.Windows.Forms.MessageBox.Show(ex.Message, "Could not set primary display",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         });
@@ -142,7 +281,7 @@ internal sealed class TrayService : IDisposable
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Could not update startup setting",
+            System.Windows.Forms.MessageBox.Show(ex.Message, "Could not update startup setting",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 

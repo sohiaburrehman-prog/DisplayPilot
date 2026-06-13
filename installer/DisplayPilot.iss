@@ -3,7 +3,8 @@
 
 #define MyAppName "DisplayPilot"
 #define MyAppVersion "1.1.0"
-#define MyAppPublisher "DisplayPilot"
+#define MyAppPublisher "Sohiab Rehman"
+#define MyAppSupportEmail "sohiab.rehman@pm.me"
 #define MyAppExeName "DisplayPilot.exe"
 #define PublishDir "..\publish"
 
@@ -12,6 +13,7 @@ AppId={{8F4E2A91-3C7B-4D5E-9F12-A1B2C3D4E5F6}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppSupportURL=mailto:{#MyAppSupportEmail}
 DefaultDirName={localappdata}\DisplayPilot
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
@@ -22,6 +24,8 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+LicenseFile=..\docs\legal\EULA.txt
+InfoBeforeFile=..\docs\legal\PrivacyPolicy.txt
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible

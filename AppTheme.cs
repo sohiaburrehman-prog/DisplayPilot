@@ -46,14 +46,14 @@ internal static class AppTheme
 
     private static readonly string UiFontFamily = ResolveUiFontFamily();
 
-    public static Font TitleFont => new(UiFontFamily, 10.25F, FontStyle.Bold, GraphicsUnit.Point);
-    public static Font SubtitleFont => new(UiFontFamily, 7.5F, FontStyle.Regular, GraphicsUnit.Point);
-    public static Font BodyFont => new(UiFontFamily, 9.25F, FontStyle.Regular, GraphicsUnit.Point);
-    public static Font BodySemiboldFont => new(UiFontFamily, 9.25F, FontStyle.Bold, GraphicsUnit.Point);
-    public static Font ButtonFont => new(UiFontFamily, 9F, FontStyle.Bold, GraphicsUnit.Point);
-    public static Font CaptionFont => new(UiFontFamily, 8F, FontStyle.Regular, GraphicsUnit.Point);
-    public static Font BadgeFont => new(UiFontFamily, 6.75F, FontStyle.Bold, GraphicsUnit.Point);
-    public static Font SectionFont => new(UiFontFamily, 7.5F, FontStyle.Bold, GraphicsUnit.Point);
+    public static readonly Font TitleFont = new(UiFontFamily, 10.25F, FontStyle.Bold, GraphicsUnit.Point);
+    public static readonly Font SubtitleFont = new(UiFontFamily, 7.5F, FontStyle.Regular, GraphicsUnit.Point);
+    public static readonly Font BodyFont = new(UiFontFamily, 9.25F, FontStyle.Regular, GraphicsUnit.Point);
+    public static readonly Font BodySemiboldFont = new(UiFontFamily, 9.25F, FontStyle.Bold, GraphicsUnit.Point);
+    public static readonly Font ButtonFont = new(UiFontFamily, 9F, FontStyle.Bold, GraphicsUnit.Point);
+    public static readonly Font CaptionFont = new(UiFontFamily, 8F, FontStyle.Regular, GraphicsUnit.Point);
+    public static readonly Font BadgeFont = new(UiFontFamily, 6.75F, FontStyle.Bold, GraphicsUnit.Point);
+    public static readonly Font SectionFont = new(UiFontFamily, 7.5F, FontStyle.Bold, GraphicsUnit.Point);
 
     public static string AppVersion
     {

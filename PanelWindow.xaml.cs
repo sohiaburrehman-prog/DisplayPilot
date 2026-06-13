@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -60,14 +61,24 @@ public partial class PanelWindow : Window
             }
         };
 
-        // Flyout behaviour: clicking anywhere else dismisses the panel.
-        // Guarded during swaps — applying a display config steals focus.
+        // Flyout behaviour: clicking elsewhere dismisses the panel. Defer one
+        // frame so opening the tray context menu does not instantly hide the flyout.
         Deactivated += (_, _) =>
         {
-            if (IsVisible && !_swapInProgress)
+            if (!IsVisible || _swapInProgress || TrayUiState.TrayMenuOpen)
             {
-                HideToTray();
+                return;
             }
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (!IsVisible || _swapInProgress || TrayUiState.TrayMenuOpen || IsActive)
+                {
+                    return;
+                }
+
+                HideToTray();
+            }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         };
     }
 
@@ -596,6 +607,19 @@ public partial class PanelWindow : Window
     private void Hide_Click(object sender, RoutedEventArgs e)
     {
         HideToTray();
+    }
+
+    private void HelpEmail_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(AppInfo.SupportMailtoUri) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Could not open help email: {ex.Message}");
+            StatusText.Text = $"Help: {AppInfo.SupportEmail}";
+        }
     }
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

@@ -2,6 +2,8 @@
 
 A lightweight Windows system-tray utility that lets you quickly change which monitor is the **primary display**. Useful when games or apps always launch on the primary monitor and do not offer a monitor picker.
 
+**Author:** Sohiab Rehman · **Help:** [sohiab.rehman@pm.me](mailto:sohiab.rehman@pm.me)
+
 > **Note:** The source folder is still named `PrimaryDisplaySwap`; the product name is **DisplayPilot**.
 
 ## How it works

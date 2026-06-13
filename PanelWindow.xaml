@@ -162,6 +162,18 @@
                            TextWrapping="Wrap"
                            Foreground="{StaticResource TextMutedBrush}"
                            Margin="2,14,2,0" />
+
+                <TextBlock FontFamily="{StaticResource UiFont}"
+                           FontSize="10.5"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Margin="2,10,2,0">
+                    <Run Text="By Sohiab Rehman · " />
+                    <Hyperlink Click="HelpEmail_Click"
+                               Foreground="{StaticResource AccentBrush}"
+                               TextDecorations="{x:Null}">
+                        Help
+                    </Hyperlink>
+                </TextBlock>
             </StackPanel>
         </StackPanel>
     </Border>

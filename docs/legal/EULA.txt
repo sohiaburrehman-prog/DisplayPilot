@@ -1,0 +1,38 @@
+DISPLAYPILOT END USER LICENSE AGREEMENT (EULA)
+
+Last updated: June 2026
+
+IMPORTANT — READ CAREFULLY: By installing, copying, or using DisplayPilot ("the Software"), you agree to this End User License Agreement. If you do not agree, do not install or use the Software.
+
+1. LICENSE GRANT
+DisplayPilot grants you a personal, non-exclusive, non-transferable, revocable license to install and use one copy of the Software on computers you own or control, solely to change which connected display Windows treats as the primary monitor.
+
+2. RESTRICTIONS
+You may not:
+  • reverse engineer, decompile, or disassemble the Software except where law expressly permits;
+  • rent, lease, sell, sublicense, or distribute the Software;
+  • remove proprietary notices;
+  • use the Software in a way that violates applicable law.
+
+3. SYSTEM CHANGES
+The Software uses Windows display configuration APIs and may write per-user startup settings when you enable "Start with Windows." You are responsible for reviewing monitor changes before launching games or applications that depend on a specific display layout.
+
+4. NO WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. DISPLAY CONFIGURATION CHANGES MAY BE REJECTED BY DRIVERS OR HARDWARE; RESULTS ARE NOT GUARANTEED.
+
+5. LIMITATION OF LIABILITY
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, DISPLAYPILOT AND ITS AUTHORS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF DATA, PROFITS, OR BUSINESS, ARISING FROM USE OF THE SOFTWARE.
+
+6. TERMINATION
+This license ends automatically if you breach it. You may stop using the Software at any time by uninstalling it and removing startup entries.
+
+7. UPDATES
+Future versions may be offered without obligation to provide updates or support.
+
+8. GOVERNING LAW
+This agreement is governed by the laws applicable in your place of residence, without regard to conflict-of-law rules, except where mandatory local law provides otherwise.
+
+9. CONTACT
+Questions about this EULA may be directed to Sohiab Rehman at sohiab.rehman@pm.me.
+
+By selecting "I agree" in the installer or continuing to use DisplayPilot, you acknowledge that you have read and accept this agreement.
