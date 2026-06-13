@@ -1,0 +1,8 @@
+bin/
+obj/
+publish/
+installer/output/
+*.user
+*.suo
+.vs/
+*.DotSettings.user

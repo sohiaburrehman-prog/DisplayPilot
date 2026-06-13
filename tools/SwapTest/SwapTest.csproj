@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Services\DisplayManager.cs" />
+    <Compile Include="..\..\Models\MonitorInfo.cs" />
+    <Compile Include="..\..\Native\DisplayInterop.cs" />
+    <Compile Include="..\..\AppLogger.cs" />
+  </ItemGroup>
+</Project>

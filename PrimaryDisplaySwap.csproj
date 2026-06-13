@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <!-- WinForms stays referenced for NotifyIcon (tray) and the dark menu renderer. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>DisplayPilot</AssemblyName>
+    <AssemblyTitle>DisplayPilot</AssemblyTitle>
+    <Product>DisplayPilot</Product>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <RootNamespace>PrimaryDisplaySwap</RootNamespace>
+    <!-- Program.Main owns startup (single-instance mutex) instead of the
+         WPF-generated entry point. -->
+    <StartupObject>PrimaryDisplaySwap.Program</StartupObject>
+    <!-- The DPI manifest is intentional (WPF reads it); silence the WinForms
+         analyzer that suggests ApplicationHighDpiMode instead. -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
+  </PropertyGroup>
+
+  <!-- Compile App.xaml as a Page so WPF does not generate its own Main()
+       calling a parameterless App() — Program.Main constructs App itself. -->
+  <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <!-- Mixing WPF and WinForms implicit usings makes Application / Color /
+       Point / Rectangle ambiguous everywhere. Keep the WinForms ones (legacy
+       helper files rely on them) and drop the WPF ones — WPF code-behind
+       declares its usings explicitly. -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <Using Remove="System.Windows" />
+    <Using Remove="System.Windows.Controls" />
+    <Using Remove="System.Windows.Data" />
+    <Using Remove="System.Windows.Documents" />
+    <Using Remove="System.Windows.Input" />
+    <Using Remove="System.Windows.Media" />
+    <Using Remove="System.Windows.Media.Imaging" />
+    <Using Remove="System.Windows.Navigation" />
+    <Using Remove="System.Windows.Shapes" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\AppIcon.ico" />
+    <Resource Include="Assets\AppIcon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tools\**" />
+    <EmbeddedResource Remove="tools\**" />
+    <None Remove="tools\**" />
+    <Compile Remove="legacy\**" />
+    <EmbeddedResource Remove="legacy\**" />
+    <None Remove="legacy\**" />
+  </ItemGroup>
+
+</Project>
