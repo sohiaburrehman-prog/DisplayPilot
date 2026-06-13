@@ -62,7 +62,6 @@ internal sealed class TrayService : IDisposable
     public void RefreshMenu()
     {
         DisposeMenuItems(_menu.Items);
-        _menu.Items.Clear();
 
         _menu.Items.Add(CreateLabel(AppInfo.AppName, TrayMenuTags.Title));
         _menu.Items.Add(CreateLabel($"Version {AppInfo.AppVersion} · Ctrl+Shift+M", TrayMenuTags.Subtitle));
@@ -227,11 +226,24 @@ internal sealed class TrayService : IDisposable
 
     private static void DisposeMenuItems(ToolStripItemCollection items)
     {
-        foreach (ToolStripItem item in items)
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        // Snapshot then clear before disposing. Disposing an item still in the
+        // collection removes it and invalidates a live foreach enumerator.
+        var snapshot = new ToolStripItem[items.Count];
+        items.CopyTo(snapshot, 0);
+        items.Clear();
+
+        foreach (var item in snapshot)
         {
             if (item is ToolStripMenuItem { DropDown: not null } menuItem)
             {
-                menuItem.DropDown.Dispose();
+                var dropdown = menuItem.DropDown;
+                menuItem.DropDown = null;
+                dropdown.Dispose();
             }
 
             item.Dispose();
