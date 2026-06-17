@@ -107,14 +107,38 @@
                 <!-- Monitor cards (populated in code-behind) -->
                 <StackPanel x:Name="MonitorList" />
 
-                <TextBlock x:Name="EmptyState"
-                           Text="Only one monitor connected."
-                           Visibility="Collapsed"
-                           FontFamily="{StaticResource UiFont}"
-                           FontSize="12"
-                           TextWrapping="Wrap"
-                           Foreground="{StaticResource TextSecondaryBrush}"
-                           Margin="2,4,2,8" />
+                <Border x:Name="EmptyStateHost"
+                        Visibility="Collapsed"
+                        Background="{StaticResource MapSurfaceBrush}"
+                        BorderBrush="{StaticResource HairlineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16,14"
+                        Margin="0,0,0,4">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="&#xE7F4;"
+                                   FontFamily="{StaticResource IconFont}"
+                                   FontSize="28"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,8" />
+                        <TextBlock x:Name="EmptyStateTitle"
+                                   Text="Only one monitor connected"
+                                   FontFamily="{StaticResource UiFont}"
+                                   FontSize="12.5"
+                                   FontWeight="SemiBold"
+                                   TextAlignment="Center"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock x:Name="EmptyState"
+                                   Text="Connect another display to swap or change primary."
+                                   FontFamily="{StaticResource UiFont}"
+                                   FontSize="11.5"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="0,6,0,0" />
+                    </StackPanel>
+                </Border>
 
                 <Button x:Name="SwapButton"
                         Style="{StaticResource SwapButton}"
@@ -132,7 +156,11 @@
                                 <RotateTransform x:Name="SwapIconRotate" Angle="0" />
                             </TextBlock.RenderTransform>
                         </TextBlock>
-                        <TextBlock Text="Swap Displays" VerticalAlignment="Center" />
+                        <TextBlock x:Name="SwapLabel"
+                                   Text="Swap Displays"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="280" />
                     </StackPanel>
                 </Button>
 

@@ -5,6 +5,8 @@ internal static class TrayMenuTags
     public const string Title = "title";
     public const string Subtitle = "subtitle";
     public const string Section = "section";
+    public const string Status = "status";
+    public const string Swap = "swap";
 }
 
 internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
@@ -33,21 +35,20 @@ internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
                 TrayMenuTags.Title => AppTheme.TextPrimary,
                 TrayMenuTags.Subtitle => AppTheme.TextMuted,
                 TrayMenuTags.Section => AppTheme.TextMuted,
+                TrayMenuTags.Status => AppTheme.TextSecondary,
+                TrayMenuTags.Swap => AppTheme.AccentSwap,
                 _ => e.TextColor,
             };
 
-            if (tag == TrayMenuTags.Section)
+            e.TextFont = tag switch
             {
-                e.TextFont = AppTheme.SectionFont;
-            }
-            else if (tag == TrayMenuTags.Title)
-            {
-                e.TextFont = AppTheme.TitleFont;
-            }
-            else if (tag == TrayMenuTags.Subtitle)
-            {
-                e.TextFont = AppTheme.CaptionFont;
-            }
+                TrayMenuTags.Section => AppTheme.SectionFont,
+                TrayMenuTags.Title => AppTheme.TitleFont,
+                TrayMenuTags.Subtitle => AppTheme.CaptionFont,
+                TrayMenuTags.Status => AppTheme.CaptionFont,
+                TrayMenuTags.Swap => AppTheme.ButtonFont,
+                _ => e.TextFont,
+            };
         }
         else
         {
@@ -84,7 +85,8 @@ internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
 
     private static bool IsDecorativeItem(ToolStripItem item)
     {
-        return item.Tag as string is TrayMenuTags.Title or TrayMenuTags.Subtitle or TrayMenuTags.Section;
+        return item.Tag as string is TrayMenuTags.Title or TrayMenuTags.Subtitle
+            or TrayMenuTags.Section or TrayMenuTags.Status;
     }
 
     private sealed class DarkColorTable : ProfessionalColorTable

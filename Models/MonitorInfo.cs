@@ -17,5 +17,18 @@ public sealed class MonitorInfo
     public string DisplayLabel =>
         $"{Name} ({Width}x{Height}){(IsPrimary ? " — primary" : "")}";
 
+    /// <summary>Compact label for menus: "1 · DELL U3421WE".</summary>
+    public string NumberedName => $"{Index + 1} · {Name}";
+
+    /// <summary>Resolution and refresh, e.g. "3440×1440 · 60 Hz".</summary>
+    public string SpecsLabel =>
+        RefreshRateHz > 0 ? $"{Width}×{Height} · {RefreshRateHz} Hz" : $"{Width}×{Height}";
+
+    /// <summary>One-line tray menu entry with optional primary marker.</summary>
+    public string TrayMenuLine =>
+        IsPrimary
+            ? $"✓ {NumberedName}  —  {SpecsLabel}  ·  Primary"
+            : $"   {NumberedName}  —  {SpecsLabel}";
+
     public override string ToString() => DisplayLabel;
 }

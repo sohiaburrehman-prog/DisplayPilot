@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Forms;
 
 using PrimaryDisplaySwap.Controls;
+using PrimaryDisplaySwap.Models;
 
 namespace PrimaryDisplaySwap.Services;
 
@@ -17,6 +18,7 @@ internal sealed class TrayService : IDisposable
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
     private readonly Icon _trayIcon;
+    private DateTime _lastBalloonUtc = DateTime.MinValue;
 
     public event EventHandler? ShowPanelRequested;
     public event EventHandler? ExitRequested;
@@ -42,6 +44,7 @@ internal sealed class TrayService : IDisposable
             RefreshMenu();
         };
         _menu.Closed += (_, _) => TrayUiState.TrayMenuOpen = false;
+        _menu.KeyDown += OnMenuKeyDown;
 
         _notifyIcon = new NotifyIcon
         {
@@ -67,52 +70,58 @@ internal sealed class TrayService : IDisposable
         _menu.Items.Add(CreateLabel($"Version {AppInfo.AppVersion} · Ctrl+Shift+M", TrayMenuTags.Subtitle));
         _menu.Items.Add(new ToolStripSeparator());
 
-        var openItem = new ToolStripMenuItem("Open control panel");
+        var openItem = new ToolStripMenuItem("&Open control panel");
         openItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(openItem);
-
-        _menu.Items.Add(new ToolStripSeparator());
-        _menu.Items.Add(CreateLabel("DISPLAYS", TrayMenuTags.Section));
 
         try
         {
             var monitors = _displayManager.GetMonitors();
+            UpdateTrayTooltip(monitors);
 
-            if (monitors.Count <= 1)
+            if (monitors.Count > 0)
             {
-                _menu.Items.Add(CreateDisabled("Only one monitor connected"));
+                var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+                _menu.Items.Add(CreateLabel($"Primary: {primary.Name}", TrayMenuTags.Status));
+            }
+
+            _menu.Items.Add(new ToolStripSeparator());
+            _menu.Items.Add(CreateLabel("DISPLAYS", TrayMenuTags.Section));
+
+            if (monitors.Count == 0)
+            {
+                _menu.Items.Add(CreateDisabled("No displays detected"));
+            }
+            else if (monitors.Count == 1)
+            {
+                var only = monitors[0];
+                _menu.Items.Add(CreateDisabled($"{only.NumberedName}  —  {only.SpecsLabel}"));
+                _menu.Items.Add(CreateDisabled("Connect another display to swap"));
             }
             else
             {
-                foreach (var monitor in monitors)
-                {
-                    var prefix = monitor.IsPrimary ? "✓ " : "   ";
-                    var item = new ToolStripMenuItem($"{prefix}{monitor.DisplayLabel}")
-                    {
-                        Enabled = !monitor.IsPrimary,
-                    };
-
-                    var index = monitor.Index;
-                    item.Click += (_, _) => SetPrimary(index);
-                    _menu.Items.Add(item);
-                }
-
                 if (monitors.Count == 2)
                 {
-                    var swapItem = new ToolStripMenuItem("Swap primary displays");
-                    swapItem.Click += (_, _) => SetPrimary(monitors.First(m => !m.IsPrimary).Index);
-                    _menu.Items.Add(swapItem);
+                    AddSwapAction(monitors);
+                    _menu.Items.Add(new ToolStripSeparator());
+                }
+
+                foreach (var monitor in monitors)
+                {
+                    AddMonitorItem(monitor, monitors.Count > 2);
                 }
             }
         }
         catch (Exception ex)
         {
+            _menu.Items.Add(new ToolStripSeparator());
+            _menu.Items.Add(CreateLabel("DISPLAYS", TrayMenuTags.Section));
             _menu.Items.Add(CreateDisabled($"Error: {ex.Message}"));
         }
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        var startupItem = new ToolStripMenuItem("Start with Windows")
+        var startupItem = new ToolStripMenuItem("Start with &Windows")
         {
             Checked = _startupService.IsEnabled,
         };
@@ -127,9 +136,48 @@ internal sealed class TrayService : IDisposable
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        var exitItem = new ToolStripMenuItem("Exit DisplayPilot");
+        var exitItem = new ToolStripMenuItem("E&xit DisplayPilot");
         exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(exitItem);
+    }
+
+    private void AddSwapAction(IReadOnlyList<MonitorInfo> monitors)
+    {
+        var primary = monitors.First(m => m.IsPrimary);
+        var other = monitors.First(m => !m.IsPrimary);
+        var swapText = $"⇄  Swap: {primary.Index + 1} ↔ {other.Index + 1}  ({primary.Name} ↔ {other.Name})";
+
+        var swapItem = new ToolStripMenuItem(swapText)
+        {
+            Tag = TrayMenuTags.Swap,
+            Padding = new Padding(8, 6, 8, 6),
+            ShortcutKeyDisplayString = "S",
+        };
+        swapItem.Click += (_, _) => SwapPrimary();
+        _menu.Items.Add(swapItem);
+    }
+
+    private void AddMonitorItem(MonitorInfo monitor, bool showSetPrimaryHint)
+    {
+        var label = monitor.TrayMenuLine;
+        if (!monitor.IsPrimary && showSetPrimaryHint)
+        {
+            label += "  —  click to set primary";
+        }
+
+        var item = new ToolStripMenuItem(label)
+        {
+            Enabled = !monitor.IsPrimary,
+        };
+
+        if (!monitor.IsPrimary)
+        {
+            var index = monitor.Index;
+            var name = monitor.Name;
+            item.Click += (_, _) => SetPrimary(index, name);
+        }
+
+        _menu.Items.Add(item);
     }
 
     private static ContextMenuStrip BuildLegalSubmenu()
@@ -177,6 +225,7 @@ internal sealed class TrayService : IDisposable
 
             • Open the flyout from the tray icon or press Ctrl+Shift+M
             • Click a monitor card or use the tray menu to set primary
+            • With two monitors, use Swap for a one-click switch
             • Logs: %LOCALAPPDATA%\DisplayPilot\log.txt
 
             DisplayPilot runs locally on your PC. See Privacy Policy for details.
@@ -197,6 +246,7 @@ internal sealed class TrayService : IDisposable
                 TrayMenuTags.Title => new Padding(8, 6, 8, 2),
                 TrayMenuTags.Subtitle => new Padding(8, 0, 8, 4),
                 TrayMenuTags.Section => new Padding(8, 4, 8, 2),
+                TrayMenuTags.Status => new Padding(8, 2, 8, 2),
                 _ => new Padding(8, 4, 8, 4),
             },
         };
@@ -266,7 +316,7 @@ internal sealed class TrayService : IDisposable
         });
     }
 
-    private void SetPrimary(int monitorIndex)
+    private void SetPrimary(int monitorIndex, string monitorName)
     {
         _ = Task.Run(() =>
         {
@@ -274,6 +324,7 @@ internal sealed class TrayService : IDisposable
             {
                 var newPrimary = _displayManager.SetPrimaryMonitor(monitorIndex);
                 AppLogger.Log($"Tray: primary set to {newPrimary.Name}.");
+                ShowFeedback($"{newPrimary.Name} is now primary.");
                 PrimaryChanged?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
@@ -283,6 +334,81 @@ internal sealed class TrayService : IDisposable
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         });
+    }
+
+    private void SwapPrimary()
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var newPrimary = _displayManager.SwapPrimaryBetweenTwoMonitors();
+                AppLogger.Log($"Tray: swapped primary to {newPrimary.Name}.");
+                ShowFeedback($"Swapped — {newPrimary.Name} is now primary.");
+                PrimaryChanged?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"Tray SwapPrimary failed: {ex.Message}");
+                System.Windows.Forms.MessageBox.Show(ex.Message, "Could not swap displays",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        });
+    }
+
+    private void UpdateTrayTooltip(IReadOnlyList<MonitorInfo> monitors)
+    {
+        if (monitors.Count == 0)
+        {
+            _notifyIcon.Text = $"{AppInfo.AppName} — no displays detected";
+            return;
+        }
+
+        var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+        var text = monitors.Count == 1
+            ? $"{AppInfo.AppName} — {primary.Name}"
+            : $"{AppInfo.AppName} — primary: {primary.Name} ({monitors.Count} displays)";
+
+        // NotifyIcon.Text is limited to 63 characters.
+        _notifyIcon.Text = text.Length <= 63 ? text : text[..60] + "…";
+    }
+
+    private void OnMenuKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.S)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_displayManager.GetMonitors().Count != 2)
+            {
+                return;
+            }
+
+            SwapPrimary();
+            e.Handled = true;
+            _menu.Close();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Tray menu shortcut failed: {ex.Message}");
+        }
+    }
+
+    private void ShowFeedback(string message)
+    {
+        if ((DateTime.UtcNow - _lastBalloonUtc).TotalSeconds < 4)
+        {
+            return;
+        }
+
+        _lastBalloonUtc = DateTime.UtcNow;
+        _notifyIcon.BalloonTipTitle = AppInfo.AppName;
+        _notifyIcon.BalloonTipText = message;
+        _notifyIcon.BalloonTipIcon = ToolTipIcon.Info;
+        _notifyIcon.ShowBalloonTip(2500);
     }
 
     private void ToggleStartup(ToolStripMenuItem startupItem)

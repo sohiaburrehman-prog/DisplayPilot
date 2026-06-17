@@ -41,6 +41,7 @@ public partial class PanelWindow : Window
 
     private bool _suppressStartupEvent;
     private bool _swapInProgress;
+    private string _swapButtonIdleText = "Swap Displays";
 
     public PanelWindow(DisplayManager displayManager, StartupService startupService)
     {
@@ -177,32 +178,57 @@ public partial class PanelWindow : Window
         catch (Exception ex)
         {
             ShowStatus(ex.Message, success: false);
-            EmptyState.Text = "Could not read displays.";
-            EmptyState.Visibility = Visibility.Visible;
-            SwapButton.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        if (monitors.Count <= 1)
-        {
-            EmptyState.Text = monitors.Count == 0
-                ? "No displays detected."
-                : "Only one monitor connected. Connect another display to swap.";
-            EmptyState.Visibility = Visibility.Visible;
+            EmptyStateTitle.Text = "Could not read displays";
+            EmptyState.Text = "Try reopening the panel or check the log file.";
+            EmptyStateHost.Visibility = Visibility.Visible;
             SwapButton.Visibility = Visibility.Collapsed;
             MapHost.Visibility = Visibility.Collapsed;
             return;
         }
 
-        EmptyState.Visibility = Visibility.Collapsed;
+        if (monitors.Count <= 1)
+        {
+            EmptyStateTitle.Text = monitors.Count == 0
+                ? "No displays detected"
+                : "Only one monitor connected";
+            EmptyState.Text = monitors.Count == 0
+                ? "Windows did not report any active displays."
+                : "Connect another display to swap or change primary.";
+            EmptyStateHost.Visibility = Visibility.Visible;
+            SwapButton.Visibility = Visibility.Collapsed;
+            MapHost.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        EmptyStateHost.Visibility = Visibility.Collapsed;
         SwapButton.Visibility = monitors.Count == 2 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (monitors.Count == 2)
+        {
+            var primary = monitors.First(m => m.IsPrimary);
+            var other = monitors.First(m => !m.IsPrimary);
+            _swapButtonIdleText = $"Swap {primary.Index + 1} ↔ {other.Index + 1}: {ShortName(primary.Name)} ↔ {ShortName(other.Name)}";
+            if (!_swapInProgress)
+            {
+                SwapLabel.Text = _swapButtonIdleText;
+            }
+        }
 
         BuildArrangementMap(monitors);
         MapHost.Visibility = Visibility.Visible;
 
         foreach (var monitor in monitors)
         {
-            MonitorList.Children.Add(BuildMonitorCard(monitor));
+            MonitorList.Children.Add(BuildMonitorCard(monitor, monitors.Count > 2));
+        }
+
+        if (monitors.Count > 2)
+        {
+            ShowStatus("Click a monitor or the arrangement map to set primary.", success: null);
+        }
+        else if (string.IsNullOrWhiteSpace(StatusText.Text) || StatusText.Text.StartsWith("Click a monitor"))
+        {
+            StatusText.Text = string.Empty;
         }
 
         if (IsVisible)
@@ -233,15 +259,19 @@ public partial class PanelWindow : Window
         var offsetX = (mapWidth - (maxX - minX) * scale) / 2;
         var offsetY = (mapHeight - (maxY - minY) * scale) / 2;
 
+        var isTwoMonitorSwap = monitors.Count == 2;
+
         foreach (var monitor in monitors)
         {
             var w = monitor.Width * scale - 4;
             var h = monitor.Height * scale - 4;
+            var screenW = Math.Max(w, 24);
+            var screenH = Math.Max(h, 16);
 
             var screen = new Border
             {
-                Width = Math.Max(w, 24),
-                Height = Math.Max(h, 16),
+                Width = screenW,
+                Height = screenH,
                 CornerRadius = new CornerRadius(5),
                 Background = monitor.IsPrimary
                     ? (Brush)FindResource("ScreenGradientBrush")
@@ -249,10 +279,10 @@ public partial class PanelWindow : Window
                 BorderBrush = monitor.IsPrimary
                     ? (Brush)FindResource("AccentHoverBrush")
                     : (Brush)FindResource("HairlineBrush"),
-                BorderThickness = new Thickness(1),
+                BorderThickness = new Thickness(monitor.IsPrimary ? 1.5 : 1),
                 Cursor = monitor.IsPrimary ? Cursors.Arrow : Cursors.Hand,
-                ToolTip = $"{monitor.Name}\n{monitor.Width} × {monitor.Height}" +
-                          (monitor.IsPrimary ? "  ·  primary" : "  ·  click to make primary"),
+                ToolTip = BuildMapTooltip(monitor),
+                Tag = monitor,
             };
 
             if (monitor.IsPrimary)
@@ -266,33 +296,112 @@ public partial class PanelWindow : Window
                 };
             }
 
-            var label = new TextBlock
+            var labelStack = new StackPanel
+            {
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            labelStack.Children.Add(new TextBlock
             {
                 Text = (monitor.Index + 1).ToString(),
                 FontFamily = (FontFamily)FindResource("UiFont"),
-                FontSize = Math.Max(Math.Min(h * 0.38, 22), 11),
+                FontSize = Math.Max(Math.Min(screenH * 0.38, 22), 11),
                 FontWeight = FontWeights.Bold,
                 Foreground = monitor.IsPrimary
                     ? Brushes.White
                     : (Brush)FindResource("TextSecondaryBrush"),
                 HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            screen.Child = label;
+            });
+
+            if (screenH >= 28)
+            {
+                labelStack.Children.Add(new TextBlock
+                {
+                    Text = ShortName(monitor.Name, 10),
+                    FontFamily = (FontFamily)FindResource("UiFont"),
+                    FontSize = 8.5,
+                    Foreground = monitor.IsPrimary
+                        ? Brushes.White
+                        : (Brush)FindResource("TextMutedBrush"),
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = screenW - 6,
+                    Margin = new Thickness(0, 1, 0, 0),
+                    Opacity = 0.9,
+                });
+            }
+
+            screen.Child = labelStack;
+
+            var index = monitor.Index;
+            var name = monitor.Name;
+            var idleBrush = monitor.IsPrimary
+                ? (Brush)FindResource("ScreenGradientBrush")
+                : (Brush)FindResource("ScreenIdleBrush");
 
             if (!monitor.IsPrimary)
             {
-                var index = monitor.Index;
-                var name = monitor.Name;
                 screen.MouseLeftButtonUp += async (_, _) => await SetPrimaryAsync(index, name);
-                screen.MouseEnter += (s, _) => ((Border)s).Background = (Brush)FindResource("CardHoverBrush");
-                screen.MouseLeave += (s, _) => ((Border)s).Background = (Brush)FindResource("ScreenIdleBrush");
             }
+
+            screen.MouseEnter += (s, _) =>
+            {
+                var border = (Border)s;
+                border.Background = (Brush)FindResource("CardHoverBrush");
+                if (!monitor.IsPrimary)
+                {
+                    border.BorderBrush = (Brush)FindResource("AccentBrush");
+                }
+            };
+            screen.MouseLeave += (s, _) =>
+            {
+                var border = (Border)s;
+                border.Background = idleBrush;
+                border.BorderBrush = monitor.IsPrimary
+                    ? (Brush)FindResource("AccentHoverBrush")
+                    : (Brush)FindResource("HairlineBrush");
+            };
 
             Canvas.SetLeft(screen, offsetX + (monitor.PositionX - minX) * scale + 2);
             Canvas.SetTop(screen, offsetY + (monitor.PositionY - minY) * scale + 2);
             ArrangementCanvas.Children.Add(screen);
         }
+
+        if (isTwoMonitorSwap)
+        {
+            var hint = new TextBlock
+            {
+                Text = "Click a display to make it primary",
+                FontFamily = (FontFamily)FindResource("UiFont"),
+                FontSize = 9.5,
+                Foreground = (Brush)FindResource("TextMutedBrush"),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            };
+            Canvas.SetLeft(hint, 0);
+            Canvas.SetTop(hint, mapHeight + 2);
+            ArrangementCanvas.Children.Add(hint);
+            ArrangementCanvas.Height = mapHeight + 18;
+        }
+        else
+        {
+            ArrangementCanvas.Height = mapHeight;
+        }
+    }
+
+    private static string BuildMapTooltip(MonitorInfo monitor)
+    {
+        var role = monitor.IsPrimary ? "primary" : "click to make primary";
+        return $"{monitor.NumberedName}\n{monitor.SpecsLabel}  ·  {role}";
+    }
+
+    private static string ShortName(string name, int maxLen = 18)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length <= maxLen)
+        {
+            return name;
+        }
+
+        return name[..(maxLen - 1)] + "…";
     }
 
     /// <summary>Fades the monitor cards in one after another.</summary>
@@ -324,17 +433,17 @@ public partial class PanelWindow : Window
         }
     }
 
-    private UIElement BuildMonitorCard(MonitorInfo monitor)
+    private UIElement BuildMonitorCard(MonitorInfo monitor, bool showSetPrimaryHint)
     {
         var card = new Button
         {
             Style = (Style)FindResource("MonitorCard"),
-            Height = 64,
+            Height = showSetPrimaryHint && !monitor.IsPrimary ? 72 : 64,
             Margin = new Thickness(0, 0, 0, 8),
             IsEnabled = !monitor.IsPrimary && !_swapInProgress,
             ToolTip = monitor.IsPrimary
-                ? $"{monitor.Name} is the primary display"
-                : $"Make {monitor.Name} the primary display",
+                ? $"{monitor.NumberedName} is the primary display"
+                : $"Make {monitor.NumberedName} the primary display",
         };
 
         if (monitor.IsPrimary)
@@ -377,7 +486,7 @@ public partial class PanelWindow : Window
         };
         textStack.Children.Add(new TextBlock
         {
-            Text = monitor.Name,
+            Text = monitor.NumberedName,
             FontFamily = (FontFamily)FindResource("UiFont"),
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
@@ -386,14 +495,24 @@ public partial class PanelWindow : Window
         });
         textStack.Children.Add(new TextBlock
         {
-            Text = monitor.RefreshRateHz > 0
-                ? $"{monitor.Width} × {monitor.Height} · {monitor.RefreshRateHz} Hz"
-                : $"{monitor.Width} × {monitor.Height}",
+            Text = monitor.SpecsLabel,
             FontFamily = (FontFamily)FindResource("UiFont"),
             FontSize = 11,
             Foreground = (Brush)FindResource("TextMutedBrush"),
             Margin = new Thickness(0, 2, 0, 0),
         });
+
+        if (showSetPrimaryHint && !monitor.IsPrimary)
+        {
+            textStack.Children.Add(new TextBlock
+            {
+                Text = "Click to set primary",
+                FontFamily = (FontFamily)FindResource("UiFont"),
+                FontSize = 10,
+                Foreground = (Brush)FindResource("AccentHoverBrush"),
+                Margin = new Thickness(0, 3, 0, 0),
+            });
+        }
         Grid.SetColumn(textStack, 2);
         grid.Children.Add(textStack);
 
@@ -544,6 +663,7 @@ public partial class PanelWindow : Window
 
         if (busy)
         {
+            SwapLabel.Text = message ?? "Working…";
             var spin = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(900))
             {
                 RepeatBehavior = RepeatBehavior.Forever,
@@ -552,6 +672,7 @@ public partial class PanelWindow : Window
         }
         else
         {
+            SwapLabel.Text = _swapButtonIdleText;
             SwapIconRotate.BeginAnimation(RotateTransform.AngleProperty, null);
         }
 
