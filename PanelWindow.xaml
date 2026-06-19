@@ -73,6 +73,7 @@
                     </StackPanel>
 
                     <Button Grid.Column="2"
+                            x:Name="HideButton"
                             Style="{StaticResource CaptionButton}"
                             Content="&#xE70D;"
                             ToolTip="Hide to tray (Ctrl+Shift+M to reopen)"
@@ -84,6 +85,44 @@
 
             <!-- ═══════ Content ═══════ -->
             <StackPanel Margin="18,16,18,16">
+
+                <!-- Update banner — shown when a newer release is available. -->
+                <Border x:Name="UpdateBanner"
+                        Visibility="Collapsed"
+                        Background="#332E7DFF"
+                        BorderBrush="{StaticResource AccentBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="12,10"
+                        Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="UpdateBannerTitle"
+                                       Text="Update available"
+                                       FontFamily="{StaticResource UiFont}"
+                                       FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock FontFamily="{StaticResource UiFont}"
+                                       FontSize="11"
+                                       Margin="0,3,0,0">
+                                <Hyperlink x:Name="UpdateBannerLink"
+                                           Click="UpdateBannerLink_Click"
+                                           Foreground="{StaticResource AccentHoverBrush}"
+                                           TextDecorations="{x:Null}">View release on GitHub</Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Style="{StaticResource CaptionButton}"
+                                Content="&#xE711;"
+                                VerticalAlignment="Top"
+                                ToolTip="Dismiss"
+                                Click="UpdateBannerDismiss_Click" />
+                    </Grid>
+                </Border>
 
                 <!-- Live arrangement map — monitors drawn to scale, populated
                      in code-behind. Click a monitor to make it primary. -->
@@ -194,7 +233,20 @@
                 <TextBlock FontFamily="{StaticResource UiFont}"
                            FontSize="10.5"
                            Foreground="{StaticResource TextMutedBrush}"
-                           Margin="2,10,2,0">
+                           Margin="2,12,2,0">
+                    <Hyperlink Click="Settings_Click"
+                               Foreground="{StaticResource AccentBrush}"
+                               TextDecorations="{x:Null}">Settings</Hyperlink>
+                    <Run Text="  ·  " />
+                    <Hyperlink Click="ViewLog_Click"
+                               Foreground="{StaticResource AccentBrush}"
+                               TextDecorations="{x:Null}">Activity log</Hyperlink>
+                </TextBlock>
+
+                <TextBlock FontFamily="{StaticResource UiFont}"
+                           FontSize="10.5"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Margin="2,8,2,0">
                     <Run Text="By Sohiab Rehman · " />
                     <Hyperlink Click="HelpEmail_Click"
                                Foreground="{StaticResource AccentBrush}"

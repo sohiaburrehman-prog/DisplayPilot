@@ -15,19 +15,25 @@ internal sealed class TrayService : IDisposable
 {
     private readonly DisplayManager _displayManager;
     private readonly StartupService _startupService;
+    private readonly SettingsService _settings;
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
     private readonly Icon _trayIcon;
     private DateTime _lastBalloonUtc = DateTime.MinValue;
+    private UpdateInfo? _updateInfo;
 
     public event EventHandler? ShowPanelRequested;
     public event EventHandler? ExitRequested;
     public event EventHandler? PrimaryChanged;
+    public event EventHandler? SettingsRequested;
+    public event EventHandler? ViewLogRequested;
+    public event EventHandler? CyclePrimaryRequested;
 
-    public TrayService(DisplayManager displayManager, StartupService startupService)
+    public TrayService(DisplayManager displayManager, StartupService startupService, SettingsService settings)
     {
         _displayManager = displayManager;
         _startupService = startupService;
+        _settings = settings;
         _trayIcon = AppIconHelper.LoadTrayIcon();
 
         _menu = new ContextMenuStrip
@@ -66,9 +72,23 @@ internal sealed class TrayService : IDisposable
     {
         DisposeMenuItems(_menu.Items);
 
+        var shortcut = HotkeyService.Describe(_settings.Current.OpenPanelHotkey);
         _menu.Items.Add(CreateLabel(AppInfo.AppName, TrayMenuTags.Title));
-        _menu.Items.Add(CreateLabel($"Version {AppInfo.AppVersion} · Ctrl+Shift+M", TrayMenuTags.Subtitle));
+        _menu.Items.Add(CreateLabel(
+            shortcut == "None" ? $"Version {AppInfo.AppVersion}" : $"Version {AppInfo.AppVersion} · {shortcut}",
+            TrayMenuTags.Subtitle));
         _menu.Items.Add(new ToolStripSeparator());
+
+        if (_updateInfo is not null)
+        {
+            var updateItem = new ToolStripMenuItem($"⬇  Update available — {_updateInfo.LatestTag}")
+            {
+                Tag = TrayMenuTags.Swap,
+            };
+            updateItem.Click += (_, _) => OpenUrl(_updateInfo.ReleaseUrl);
+            _menu.Items.Add(updateItem);
+            _menu.Items.Add(new ToolStripSeparator());
+        }
 
         var openItem = new ToolStripMenuItem("&Open control panel");
         openItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
@@ -118,6 +138,20 @@ internal sealed class TrayService : IDisposable
             _menu.Items.Add(CreateLabel("DISPLAYS", TrayMenuTags.Section));
             _menu.Items.Add(CreateDisabled($"Error: {ex.Message}"));
         }
+
+        _menu.Items.Add(new ToolStripSeparator());
+
+        var cyclePrimaryItem = new ToolStripMenuItem("Cycle &primary display");
+        cyclePrimaryItem.Click += (_, _) => CyclePrimaryRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(cyclePrimaryItem);
+
+        var settingsItem = new ToolStripMenuItem("&Settings…");
+        settingsItem.Click += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(settingsItem);
+
+        var logItem = new ToolStripMenuItem("View &activity log…");
+        logItem.Click += (_, _) => ViewLogRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(logItem);
 
         _menu.Items.Add(new ToolStripSeparator());
 
@@ -394,6 +428,25 @@ internal sealed class TrayService : IDisposable
         catch (Exception ex)
         {
             AppLogger.Log($"Tray menu shortcut failed: {ex.Message}");
+        }
+    }
+
+    public void NotifyUpdateAvailable(UpdateInfo info)
+    {
+        _updateInfo = info;
+        RefreshMenu();
+        ShowFeedback($"DisplayPilot {info.LatestTag} is available. Right-click the tray icon to view it.");
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Tray: could not open URL '{url}': {ex.Message}");
         }
     }
 

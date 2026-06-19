@@ -9,6 +9,7 @@
   <ItemGroup>
     <Compile Include="..\..\Services\DisplayManager.cs" />
     <Compile Include="..\..\Models\MonitorInfo.cs" />
+    <Compile Include="..\..\Models\DisplayMode.cs" />
     <Compile Include="..\..\Native\DisplayInterop.cs" />
     <Compile Include="..\..\AppLogger.cs" />
   </ItemGroup>

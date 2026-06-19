@@ -1,0 +1,229 @@
+<Window x:Class="PrimaryDisplaySwap.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DisplayPilot — Settings"
+        Width="560"
+        Height="680"
+        MinWidth="520"
+        MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource FlyoutOpaqueBrush}"
+        FontFamily="{StaticResource UiFont}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{StaticResource HeaderBrush}"
+                BorderBrush="{StaticResource HairlineBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="20,16">
+            <StackPanel>
+                <TextBlock Text="Settings"
+                           FontSize="16" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+                <TextBlock x:Name="StatusText"
+                           FontSize="11"
+                           Margin="0,4,0,0"
+                           Foreground="{StaticResource TextMutedBrush}" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16,12">
+            <StackPanel>
+
+                <!-- ═══════ Hotkeys ═══════ -->
+                <TextBlock Text="HOTKEYS"
+                           FontSize="11" FontWeight="Bold"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Margin="2,0,0,8" />
+
+                <Border Background="{StaticResource MapSurfaceBrush}"
+                        BorderBrush="{StaticResource HairlineBrush}"
+                        BorderThickness="1" CornerRadius="10"
+                        Padding="14,12" Margin="0,0,0,18">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Open control panel"
+                                           FontSize="12.5"
+                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Text="Global shortcut to show the flyout"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Margin="0,2,0,0" />
+                            </StackPanel>
+                            <Button x:Name="OpenPanelCapture" Grid.Column="1"
+                                    Style="{StaticResource MiniButton}"
+                                    MinWidth="150"
+                                    Click="CaptureOpenPanel_Click" />
+                        </Grid>
+
+                        <Rectangle Height="1" Fill="{StaticResource HairlineBrush}" Margin="0,12" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <CheckBox x:Name="CycleEnabledCheck"
+                                          Style="{StaticResource DarkCheckBox}"
+                                          Content="Cycle primary display"
+                                          Foreground="{StaticResource TextPrimaryBrush}"
+                                          Checked="CycleEnabled_Changed"
+                                          Unchecked="CycleEnabled_Changed" />
+                                <TextBlock Text="Optional shortcut to rotate the primary monitor"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Margin="27,2,0,0" />
+                            </StackPanel>
+                            <Button x:Name="CycleCapture" Grid.Column="1"
+                                    Style="{StaticResource MiniButton}"
+                                    MinWidth="150"
+                                    Click="CaptureCycle_Click" />
+                        </Grid>
+
+                        <TextBlock x:Name="CaptureHint"
+                                   Text=""
+                                   FontSize="11"
+                                   Foreground="{StaticResource AccentHoverBrush}"
+                                   Margin="0,10,0,0"
+                                   Visibility="Collapsed" />
+                    </StackPanel>
+                </Border>
+
+                <!-- ═══════ Profiles ═══════ -->
+                <Grid Margin="2,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="AUTO-SWAP PROFILES"
+                               FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               VerticalAlignment="Center" />
+                    <Button x:Name="AddProfileButton" Grid.Column="1"
+                            Style="{StaticResource MiniButton}"
+                            Content="+ Add profile"
+                            Click="AddProfile_Click" />
+                </Grid>
+
+                <TextBlock Text="When a chosen app starts, make a chosen monitor primary; optionally restore it on exit."
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Margin="2,0,0,10" />
+
+                <StackPanel x:Name="ProfileListPanel" />
+
+                <TextBlock x:Name="NoProfilesText"
+                           Text="No profiles yet. Add one to auto-switch the primary display for a game or app."
+                           FontSize="11.5" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Margin="2,2,0,0" />
+
+                <!-- Inline profile editor -->
+                <Border x:Name="ProfileEditor"
+                        Visibility="Collapsed"
+                        Background="{StaticResource CardBrush}"
+                        BorderBrush="{StaticResource AccentBrush}"
+                        BorderThickness="1" CornerRadius="10"
+                        Padding="14,12" Margin="0,12,0,0">
+                    <StackPanel>
+                        <TextBlock x:Name="ProfileEditorTitle"
+                                   Text="New profile"
+                                   FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   Margin="0,0,0,12" />
+
+                        <TextBlock Text="Process name (e.g. game.exe)"
+                                   FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="ProcessNameBox" Grid.Column="0"
+                                     Style="{StaticResource DarkTextBox}" />
+                            <ComboBox x:Name="RunningProcessCombo" Grid.Column="1"
+                                      Style="{StaticResource DarkComboBox}"
+                                      Width="180" Margin="8,0,0,0"
+                                      SelectionChanged="RunningProcess_Changed" />
+                        </Grid>
+
+                        <TextBlock Text="Make this monitor primary"
+                                   FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
+                        <ComboBox x:Name="TargetMonitorCombo"
+                                  Style="{StaticResource DarkComboBox}"
+                                  Margin="0,0,0,12" />
+
+                        <CheckBox x:Name="RestoreOnExitCheck"
+                                  Style="{StaticResource DarkCheckBox}"
+                                  Content="Restore previous primary when the app exits"
+                                  IsChecked="True"
+                                  Margin="0,0,0,14" />
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Cancel" Style="{StaticResource MiniButton}"
+                                    Width="92" Click="CancelProfile_Click" />
+                            <Button x:Name="SaveProfileButton" Content="Save" Style="{StaticResource AccentMiniButton}"
+                                    Width="92" Margin="8,0,0,0" Click="SaveProfile_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ═══════ Updates ═══════ -->
+                <TextBlock Text="UPDATES"
+                           FontSize="11" FontWeight="Bold"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Margin="2,20,0,8" />
+
+                <Border Background="{StaticResource MapSurfaceBrush}"
+                        BorderBrush="{StaticResource HairlineBrush}"
+                        BorderThickness="1" CornerRadius="10"
+                        Padding="14,12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <CheckBox x:Name="AutoUpdateCheck"
+                                  Style="{StaticResource DarkCheckBox}"
+                                  Content="Check GitHub for updates on startup"
+                                  Foreground="{StaticResource TextPrimaryBrush}"
+                                  Checked="AutoUpdate_Changed"
+                                  Unchecked="AutoUpdate_Changed" />
+                        <TextBlock Text="Telemetry-free: queries only the public GitHub releases API."
+                                   FontSize="11"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Margin="27,2,0,12" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="CheckNowButton" Content="Check now"
+                                    Style="{StaticResource MiniButton}" Width="120"
+                                    Click="CheckNow_Click" />
+                            <TextBlock x:Name="UpdateStatusText"
+                                       VerticalAlignment="Center"
+                                       Margin="12,0,0,0"
+                                       FontSize="11.5"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Padding="16,14,16,16"
+                Background="{StaticResource HeaderBrush}"
+                BorderBrush="{StaticResource HairlineBrush}"
+                BorderThickness="0,1,0,0">
+            <Button Content="Close" Style="{StaticResource AccentMiniButton}"
+                    Height="38" HorizontalAlignment="Right" Width="120"
+                    Click="Close_Click" />
+        </Border>
+    </Grid>
+</Window>

@@ -26,8 +26,26 @@ static class Program
         var launchedAtStartup = args.Any(a =>
             string.Equals(a, AutostartArg, StringComparison.OrdinalIgnoreCase));
 
-        AppLogger.ClearLog();
+        AppLogger.StartNewSession();
         AppLogger.Log($"Starting {AppInfo.AppName}. Exe={Environment.ProcessPath}, autostart={launchedAtStartup}");
+
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception ex)
+            {
+                AppLogger.LogException("AppDomain.UnhandledException", ex);
+            }
+            else
+            {
+                AppLogger.Log($"AppDomain.UnhandledException (non-Exception): {e.ExceptionObject}");
+            }
+        };
+
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            AppLogger.LogException("TaskScheduler.UnobservedTaskException", e.Exception);
+            e.SetObserved();
+        };
 
         try
         {

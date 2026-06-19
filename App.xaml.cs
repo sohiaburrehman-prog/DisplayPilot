@@ -1,41 +1,36 @@
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 
 using Microsoft.Win32;
 
+using PrimaryDisplaySwap.Models;
 using PrimaryDisplaySwap.Services;
 
 namespace PrimaryDisplaySwap;
 
 /// <summary>
-/// Application lifetime: owns the tray icon, the Ctrl+Shift+M hotkey, the
-/// display-change listener, and the panel window. When launched with
-/// --autostart (the registry Run entry) it starts silently in the tray.
+/// Application lifetime: owns the tray icon, global hotkeys, the display-change
+/// listener, the auto-swap process watcher, the update check, and the panel
+/// window. When launched with --autostart (the registry Run entry) it starts
+/// silently in the tray.
 /// </summary>
 public partial class App : System.Windows.Application
 {
-    private const int WmHotKey = 0x0312;
-    private const int HotKeyId = 9001;
-    private const uint ModControl = 0x0002;
-    private const uint ModShift = 0x0004;
-    private const uint VkM = 0x4D;
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
     private readonly bool _launchedAtStartup;
     private readonly EventWaitHandle _showPanelEvent;
     private readonly DisplayManager _displayManager = new();
     private readonly StartupService _startupService = new();
+    private readonly SettingsService _settings = new();
+    private readonly HotkeyService _hotkeys = new();
 
     private RegisteredWaitHandle? _showPanelWait;
     private TrayService? _tray;
     private PanelWindow? _panel;
+    private SettingsWindow? _settingsWindow;
+    private LogViewerWindow? _logWindow;
+    private ProcessWatcherService? _processWatcher;
     private HwndSource? _hwndSource;
-    private bool _hotKeyRegistered;
 
     public App(bool launchedAtStartup, EventWaitHandle showPanelEvent)
     {
@@ -47,7 +42,13 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
 
-        _panel = new PanelWindow(_displayManager, _startupService);
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+
+        _settings.Load();
+
+        _panel = new PanelWindow(_displayManager, _startupService, _settings);
+        _panel.SettingsRequested += (_, _) => ShowSettings();
+        _panel.ViewLogRequested += (_, _) => ShowLog();
 
         // Create the window handle without showing the window, so the global
         // hotkey works even while the panel has never been opened.
@@ -55,13 +56,28 @@ public partial class App : System.Windows.Application
         helper.EnsureHandle();
         _hwndSource = HwndSource.FromHwnd(helper.Handle);
         _hwndSource?.AddHook(WndProc);
-        _hotKeyRegistered = RegisterHotKey(helper.Handle, HotKeyId, ModControl | ModShift, VkM);
 
-        _tray = new TrayService(_displayManager, _startupService);
+        _hotkeys.Initialize(helper.Handle);
+        ApplyHotkeys(announce: false);
+
+        _tray = new TrayService(_displayManager, _startupService, _settings);
         _tray.ShowPanelRequested += (_, _) => ShowPanel();
         _tray.ExitRequested += (_, _) => ExitApplication();
         _tray.PrimaryChanged += (_, _) => _panel?.RefreshMonitors();
+        _tray.SettingsRequested += (_, _) => ShowSettings();
+        _tray.ViewLogRequested += (_, _) => ShowLog();
+        _tray.CyclePrimaryRequested += (_, _) => CyclePrimary();
         _tray.Install();
+
+        _processWatcher = new ProcessWatcherService(_settings, _displayManager);
+        _processWatcher.PrimaryChanged += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            _panel?.RefreshMonitors();
+            _tray?.RefreshMenu();
+        });
+        _processWatcher.Start();
+
+        _settings.Changed += OnSettingsChanged;
 
         // Re-read monitors when displays are added/removed/rearranged.
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
@@ -76,11 +92,34 @@ public partial class App : System.Windows.Application
 
         TrayIconSettingsService.SchedulePromotionRetries(Environment.ProcessPath ?? string.Empty);
 
-        AppLogger.Log($"Initialized. PID={Environment.ProcessId}, hotkey={_hotKeyRegistered}, autostart={_launchedAtStartup}");
+        AppLogger.Log($"Initialized. PID={Environment.ProcessId}, autostart={_launchedAtStartup}");
+
+        _ = RunUpdateCheckAsync();
 
         if (!_launchedAtStartup)
         {
             ShowPanel();
+        }
+    }
+
+    private void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            ApplyHotkeys(announce: true);
+            _processWatcher?.Reconfigure();
+            _panel?.RefreshHotkeyHints();
+            _tray?.RefreshMenu();
+        });
+    }
+
+    private void ApplyHotkeys(bool announce)
+    {
+        var result = _hotkeys.Apply(_settings.Current);
+        if (announce && result.HasFailure)
+        {
+            _panel?.ShowExternalStatus(result.FailureMessage, success: false);
+            AppLogger.Log(result.FailureMessage);
         }
     }
 
@@ -91,19 +130,103 @@ public partial class App : System.Windows.Application
         {
             _panel?.RefreshMonitors();
             _tray?.RefreshMenu();
+            _settingsWindow?.RefreshMonitors();
         });
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WmHotKey && wParam.ToInt32() == HotKeyId)
+        if (msg == HotkeyService.WmHotKey)
         {
-            AppLogger.Log("Hotkey Ctrl+Shift+M received.");
-            ShowPanel();
-            handled = true;
+            var id = wParam.ToInt32();
+            if (id == HotkeyService.OpenPanelHotkeyId)
+            {
+                AppLogger.Log("Hotkey (open panel) received.");
+                ShowPanel();
+                handled = true;
+            }
+            else if (id == HotkeyService.CyclePrimaryHotkeyId)
+            {
+                AppLogger.Log("Hotkey (cycle primary) received.");
+                CyclePrimary();
+                handled = true;
+            }
         }
 
         return IntPtr.Zero;
+    }
+
+    private void CyclePrimary()
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var newPrimary = _displayManager.CyclePrimary();
+                AppLogger.Log($"Cycle primary: now {newPrimary.Name}.");
+                Dispatcher.BeginInvoke(() =>
+                {
+                    _panel?.RefreshMonitors();
+                    _panel?.ShowExternalStatus($"Primary set to {newPrimary.Name}.", success: true);
+                    _tray?.RefreshMenu();
+                });
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"Cycle primary failed: {ex.Message}");
+                Dispatcher.BeginInvoke(() => _panel?.ShowExternalStatus(ex.Message, success: false));
+            }
+        });
+    }
+
+    private async Task RunUpdateCheckAsync()
+    {
+        try
+        {
+            if (!_settings.Current.AutoUpdateCheckEnabled)
+            {
+                return;
+            }
+
+            // Throttle to at most once per 24 hours.
+            if ((DateTime.UtcNow - _settings.Current.LastUpdateCheckUtc) < TimeSpan.FromHours(24))
+            {
+                return;
+            }
+
+            var service = new UpdateService();
+            var info = await service.CheckForUpdateAsync().ConfigureAwait(false);
+
+            _settings.Update(s => s.LastUpdateCheckUtc = DateTime.UtcNow);
+
+            if (info is null || !info.UpdateAvailable)
+            {
+                return;
+            }
+
+            if (string.Equals(info.LatestTag, _settings.Current.DismissedUpdateTag, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            await Dispatcher.BeginInvoke(() =>
+            {
+                _panel?.ShowUpdateBanner(info);
+                _tray?.NotifyUpdateAvailable(info);
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Update check error: {ex.Message}");
+        }
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        AppLogger.LogException("DispatcherUnhandledException", e.Exception);
+
+        // Keep the app alive in the tray; a single UI fault should not kill it.
+        e.Handled = true;
     }
 
     private void ShowPanel()
@@ -117,6 +240,35 @@ public partial class App : System.Windows.Application
         _panel.ShowNearTray();
     }
 
+    private void ShowSettings()
+    {
+        if (_settingsWindow is null)
+        {
+            _settingsWindow = new SettingsWindow(_displayManager, _settings);
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            _settingsWindow.Show();
+        }
+        else
+        {
+            _settingsWindow.Activate();
+        }
+    }
+
+    private void ShowLog()
+    {
+        if (_logWindow is null)
+        {
+            _logWindow = new LogViewerWindow();
+            _logWindow.Closed += (_, _) => _logWindow = null;
+            _logWindow.Show();
+        }
+        else
+        {
+            _logWindow.RefreshLog();
+            _logWindow.Activate();
+        }
+    }
+
     private void ExitApplication()
     {
         AppLogger.Log("Exit requested.");
@@ -126,13 +278,10 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        _settings.Changed -= OnSettingsChanged;
         _showPanelWait?.Unregister(null);
-
-        if (_hotKeyRegistered && _hwndSource != null)
-        {
-            UnregisterHotKey(_hwndSource.Handle, HotKeyId);
-        }
-
+        _processWatcher?.Dispose();
+        _hotkeys.UnregisterAll();
         _hwndSource?.RemoveHook(WndProc);
         _tray?.Dispose();
         AppLogger.Log("Exited cleanly.");

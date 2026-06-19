@@ -13,6 +13,22 @@ void Dump(string label)
 
 Dump("before");
 
+if (args.Contains("--modes"))
+{
+    // Dry run: enumerate available resolution/refresh modes per monitor.
+    foreach (var m in manager.GetMonitors())
+    {
+        var current = manager.GetCurrentMode(m.DeviceName);
+        Console.WriteLine($"\n{m.NumberedName} ({m.DeviceName}) — current: {current?.Label ?? "?"}");
+        foreach (var mode in manager.GetAvailableModes(m.DeviceName))
+        {
+            Console.WriteLine($"    {mode.Label}");
+        }
+    }
+
+    return;
+}
+
 if (args.Contains("--once"))
 {
     var p = manager.SwapPrimaryBetweenTwoMonitors();

@@ -17,9 +17,37 @@ internal static class DisplayInterop
     public const int DispChangeSuccessful = 0;
 
     public const uint DmPosition = 0x00000020;
+    public const uint DmBitsPerPel = 0x00040000;
+    public const uint DmPelsWidth = 0x00080000;
+    public const uint DmPelsHeight = 0x00100000;
+    public const uint DmDisplayFrequency = 0x00400000;
+
     public const uint CdsUpdateRegistry = 0x00000001;
+    public const uint CdsTest = 0x00000002;
     public const uint CdsSetPrimary = 0x00000010;
     public const uint CdsNoReset = 0x10000000;
+
+    // ChangeDisplaySettingsEx return codes.
+    public const int DispChangeRestart = 1;
+    public const int DispChangeFailed = -1;
+    public const int DispChangeBadMode = -2;
+    public const int DispChangeNotUpdated = -3;
+    public const int DispChangeBadFlags = -4;
+    public const int DispChangeBadParam = -5;
+    public const int DispChangeBadDualView = -6;
+
+    public static string DescribeDispChange(int code) => code switch
+    {
+        DispChangeSuccessful => "the change was applied",
+        DispChangeRestart => "a restart is required to apply this mode",
+        DispChangeFailed => "the display driver rejected the change",
+        DispChangeBadMode => "the display mode is not supported",
+        DispChangeNotUpdated => "the registry could not be updated",
+        DispChangeBadFlags => "invalid flags were passed",
+        DispChangeBadParam => "an invalid parameter was passed",
+        DispChangeBadDualView => "the operation is unsupported in dual-view",
+        _ => $"unknown error ({code})",
+    };
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern bool EnumDisplayDevices(string? lpDevice, uint iDevNum, ref DISPLAY_DEVICE lpDisplayDevice, uint dwFlags);

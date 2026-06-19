@@ -17,6 +17,7 @@ using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Button = System.Windows.Controls.Button;
 using Color = System.Windows.Media.Color;
+using ComboBox = System.Windows.Controls.ComboBox;
 using Cursors = System.Windows.Input.Cursors;
 using FontFamily = System.Windows.Media.FontFamily;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
@@ -26,6 +27,11 @@ namespace PrimaryDisplaySwap;
 
 public partial class PanelWindow : Window
 {
+    public event EventHandler? SettingsRequested;
+    public event EventHandler? ViewLogRequested;
+
+    private string _updateReleaseUrl = string.Empty;
+    private string _updateTag = string.Empty;
     // DWM attributes for the native Windows 11 flyout look.
     private const int DwmwaUseImmersiveDarkMode = 20;
     private const int DwmwaWindowCornerPreference = 33;
@@ -38,21 +44,24 @@ public partial class PanelWindow : Window
 
     private readonly DisplayManager _displayManager;
     private readonly StartupService _startupService;
+    private readonly SettingsService _settings;
 
     private bool _suppressStartupEvent;
     private bool _swapInProgress;
     private string _swapButtonIdleText = "Swap Displays";
 
-    public PanelWindow(DisplayManager displayManager, StartupService startupService)
+    public PanelWindow(DisplayManager displayManager, StartupService startupService, SettingsService settings)
     {
         _displayManager = displayManager;
         _startupService = startupService;
+        _settings = settings;
 
         InitializeComponent();
 
         Title = AppInfo.AppName;
         TitleText.Text = AppInfo.AppName;
         VersionText.Text = $"v{AppInfo.AppVersion}";
+        RefreshHotkeyHints();
 
         KeyDown += (_, e) =>
         {
@@ -219,7 +228,7 @@ public partial class PanelWindow : Window
 
         foreach (var monitor in monitors)
         {
-            MonitorList.Children.Add(BuildMonitorCard(monitor, monitors.Count > 2));
+            MonitorList.Children.Add(BuildMonitorEntry(monitor, monitors.Count > 2));
         }
 
         if (monitors.Count > 2)
@@ -433,13 +442,177 @@ public partial class PanelWindow : Window
         }
     }
 
+    /// <summary>A monitor card plus a collapsible resolution / refresh editor.</summary>
+    private UIElement BuildMonitorEntry(MonitorInfo monitor, bool showSetPrimaryHint)
+    {
+        var container = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+        container.Children.Add(BuildMonitorCard(monitor, showSetPrimaryHint));
+        container.Children.Add(BuildModeEditor(monitor));
+        return container;
+    }
+
+    /// <summary>
+    /// Expandable per-monitor resolution + refresh selector. Modes are loaded
+    /// lazily on first expand to keep panel refreshes fast.
+    /// </summary>
+    private UIElement BuildModeEditor(MonitorInfo monitor)
+    {
+        var deviceName = monitor.DeviceName;
+
+        var toggle = new System.Windows.Controls.Primitives.ToggleButton
+        {
+            Cursor = Cursors.Hand,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(2, 0, 0, 0),
+            Foreground = (Brush)FindResource("TextMutedBrush"),
+            Content = "Resolution & refresh ▾",
+            FontFamily = (FontFamily)FindResource("UiFont"),
+            FontSize = 10.5,
+            Template = (ControlTemplate)FindResource("LinkToggleTemplate"),
+        };
+
+        var resolutionCombo = new ComboBox
+        {
+            Style = (Style)FindResource("DarkComboBox"),
+            Margin = new Thickness(0, 0, 6, 0),
+        };
+        var refreshCombo = new ComboBox
+        {
+            Style = (Style)FindResource("DarkComboBox"),
+            Width = 96,
+        };
+        var applyButton = new Button
+        {
+            Style = (Style)FindResource("AccentMiniButton"),
+            Content = "Apply",
+            Width = 72,
+            Margin = new Thickness(6, 0, 0, 0),
+            IsEnabled = false,
+        };
+
+        var grid = new Grid { Margin = new Thickness(2, 8, 2, 2) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(resolutionCombo, 0);
+        Grid.SetColumn(refreshCombo, 1);
+        Grid.SetColumn(applyButton, 2);
+        grid.Children.Add(resolutionCombo);
+        grid.Children.Add(refreshCombo);
+        grid.Children.Add(applyButton);
+
+        var panel = new StackPanel { Visibility = Visibility.Collapsed };
+        panel.Children.Add(grid);
+
+        var loaded = false;
+        IReadOnlyList<DisplayMode> modes = Array.Empty<DisplayMode>();
+
+        void PopulateRefreshRates()
+        {
+            if (resolutionCombo.SelectedItem is not DisplayMode selectedRes)
+            {
+                return;
+            }
+
+            var rates = modes
+                .Where(m => m.Width == selectedRes.Width && m.Height == selectedRes.Height)
+                .OrderByDescending(m => m.RefreshRateHz)
+                .ToList();
+
+            refreshCombo.ItemsSource = rates;
+            refreshCombo.DisplayMemberPath = nameof(DisplayMode.RefreshRateHz);
+            refreshCombo.SelectedItem = rates.FirstOrDefault();
+        }
+
+        resolutionCombo.SelectionChanged += (_, _) =>
+        {
+            PopulateRefreshRates();
+            applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
+        };
+        refreshCombo.SelectionChanged += (_, _) =>
+            applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
+
+        toggle.Checked += (_, _) =>
+        {
+            panel.Visibility = Visibility.Visible;
+            toggle.Content = "Resolution & refresh ▴";
+
+            if (!loaded)
+            {
+                loaded = true;
+                modes = _displayManager.GetAvailableModes(deviceName);
+                var current = _displayManager.GetCurrentMode(deviceName);
+
+                var resolutions = modes
+                    .GroupBy(m => (m.Width, m.Height))
+                    .Select(g => g.First())
+                    .ToList();
+
+                resolutionCombo.ItemsSource = resolutions;
+                resolutionCombo.DisplayMemberPath = nameof(DisplayMode.ResolutionLabel);
+
+                if (current is not null)
+                {
+                    resolutionCombo.SelectedItem = resolutions
+                        .FirstOrDefault(m => m.Width == current.Width && m.Height == current.Height);
+                }
+
+                resolutionCombo.SelectedItem ??= resolutions.FirstOrDefault();
+                PopulateRefreshRates();
+
+                if (current is not null)
+                {
+                    refreshCombo.SelectedItem = (refreshCombo.ItemsSource as IEnumerable<DisplayMode>)?
+                        .FirstOrDefault(m => m.RefreshRateHz == current.RefreshRateHz) ?? refreshCombo.SelectedItem;
+                }
+            }
+        };
+        toggle.Unchecked += (_, _) =>
+        {
+            panel.Visibility = Visibility.Collapsed;
+            toggle.Content = "Resolution & refresh ▾";
+        };
+
+        applyButton.Click += async (_, _) =>
+        {
+            if (refreshCombo.SelectedItem is not DisplayMode chosen)
+            {
+                return;
+            }
+
+            try
+            {
+                applyButton.IsEnabled = false;
+                SetBusy(true, $"Applying {chosen.Label}…");
+                await Task.Run(() => _displayManager.ApplyDisplayMode(deviceName, chosen));
+                RefreshMonitors();
+                ShowStatus($"{monitor.Name}: applied {chosen.Label}.", success: true);
+            }
+            catch (Exception ex)
+            {
+                ShowStatus(ex.Message, success: false);
+            }
+            finally
+            {
+                SetBusy(false);
+                applyButton.IsEnabled = true;
+            }
+        };
+
+        var wrapper = new StackPanel { Margin = new Thickness(8, 2, 0, 0) };
+        wrapper.Children.Add(toggle);
+        wrapper.Children.Add(panel);
+        return wrapper;
+    }
+
     private UIElement BuildMonitorCard(MonitorInfo monitor, bool showSetPrimaryHint)
     {
         var card = new Button
         {
             Style = (Style)FindResource("MonitorCard"),
             Height = showSetPrimaryHint && !monitor.IsPrimary ? 72 : 64,
-            Margin = new Thickness(0, 0, 0, 8),
             IsEnabled = !monitor.IsPrimary && !_swapInProgress,
             ToolTip = monitor.IsPrimary
                 ? $"{monitor.NumberedName} is the primary display"
@@ -740,6 +913,79 @@ public partial class PanelWindow : Window
         {
             AppLogger.Log($"Could not open help email: {ex.Message}");
             StatusText.Text = $"Help: {AppInfo.SupportEmail}";
+        }
+    }
+
+    /// <summary>Thread-safe status update callable from background services.</summary>
+    public void ShowExternalStatus(string message, bool? success)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => ShowExternalStatus(message, success));
+            return;
+        }
+
+        ShowStatus(message, success);
+    }
+
+    /// <summary>Updates UI hints that mention the (rebindable) open-panel hotkey.</summary>
+    public void RefreshHotkeyHints()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(RefreshHotkeyHints);
+            return;
+        }
+
+        var shortcut = HotkeyService.Describe(_settings.Current.OpenPanelHotkey);
+        HideButton.ToolTip = shortcut == "None"
+            ? "Hide to tray"
+            : $"Hide to tray ({shortcut} to reopen)";
+    }
+
+    public void ShowUpdateBanner(UpdateInfo info)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => ShowUpdateBanner(info));
+            return;
+        }
+
+        _updateReleaseUrl = info.ReleaseUrl;
+        _updateTag = info.LatestTag;
+        UpdateBannerTitle.Text = $"DisplayPilot {info.LatestTag} is available";
+        UpdateBanner.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateBannerLink_Click(object sender, RoutedEventArgs e)
+    {
+        OpenUrl(string.IsNullOrWhiteSpace(_updateReleaseUrl) ? UpdateService.ReleasesPage : _updateReleaseUrl);
+    }
+
+    private void UpdateBannerDismiss_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateBanner.Visibility = Visibility.Collapsed;
+        if (!string.IsNullOrWhiteSpace(_updateTag))
+        {
+            _settings.Update(s => s.DismissedUpdateTag = _updateTag);
+        }
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e) =>
+        SettingsRequested?.Invoke(this, EventArgs.Empty);
+
+    private void ViewLog_Click(object sender, RoutedEventArgs e) =>
+        ViewLogRequested?.Invoke(this, EventArgs.Empty);
+
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Could not open URL '{url}': {ex.Message}");
         }
     }
 

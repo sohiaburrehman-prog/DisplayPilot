@@ -1,6 +1,7 @@
 bin/
 obj/
 publish/
+publish-selfcontained/
 installer/output/
 *.user
 *.suo

@@ -137,6 +137,160 @@ public sealed class DisplayManager
         return SetPrimaryMonitor(nonPrimary.Index);
     }
 
+    /// <summary>
+    /// Makes the monitor with the given GDI device name primary. Used by
+    /// auto-swap profiles. Throws if the device is not currently connected.
+    /// </summary>
+    public MonitorInfo SetPrimaryByDeviceName(string deviceName)
+    {
+        var monitors = GetMonitors();
+        var target = monitors.FirstOrDefault(m =>
+            string.Equals(m.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
+
+        if (target is null)
+        {
+            throw new InvalidOperationException($"Display {deviceName} is not currently connected.");
+        }
+
+        return SetPrimaryMonitor(target.Index);
+    }
+
+    /// <summary>
+    /// Cycles the primary display to the next monitor in index order. With a
+    /// single monitor this is a no-op (returns it unchanged).
+    /// </summary>
+    public MonitorInfo CyclePrimary()
+    {
+        var monitors = GetMonitors();
+        if (monitors.Count <= 1)
+        {
+            throw new InvalidOperationException("Only one monitor is connected — nothing to cycle.");
+        }
+
+        var currentPrimaryIndex = monitors
+            .Select((m, i) => (m, i))
+            .FirstOrDefault(t => t.m.IsPrimary).i;
+
+        var next = (currentPrimaryIndex + 1) % monitors.Count;
+        return SetPrimaryMonitor(next);
+    }
+
+    /// <summary>
+    /// Enumerates the display modes (resolution + refresh) the monitor reports,
+    /// de-duplicated and sorted from highest to lowest. Returns an empty list on
+    /// failure.
+    /// </summary>
+    public IReadOnlyList<DisplayMode> GetAvailableModes(string deviceName)
+    {
+        var modes = new List<DisplayMode>();
+        var seen = new HashSet<DisplayMode>();
+
+        try
+        {
+            for (var modeIndex = 0; ; modeIndex++)
+            {
+                var devMode = CreateDevMode();
+                if (!EnumDisplaySettings(deviceName, modeIndex, ref devMode))
+                {
+                    break;
+                }
+
+                // Skip low colour-depth legacy modes.
+                if (devMode.dmBitsPerPel < 16)
+                {
+                    continue;
+                }
+
+                var mode = new DisplayMode
+                {
+                    Width = (int)devMode.dmPelsWidth,
+                    Height = (int)devMode.dmPelsHeight,
+                    RefreshRateHz = (int)devMode.dmDisplayFrequency,
+                    BitsPerPixel = (int)devMode.dmBitsPerPel,
+                };
+
+                if (mode.Width <= 0 || mode.Height <= 0)
+                {
+                    continue;
+                }
+
+                if (seen.Add(mode))
+                {
+                    modes.Add(mode);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"GetAvailableModes failed for {deviceName}: {ex.Message}");
+        }
+
+        return modes
+            .OrderByDescending(m => (long)m.Width * m.Height)
+            .ThenByDescending(m => m.RefreshRateHz)
+            .ToList();
+    }
+
+    /// <summary>The monitor's current mode, or null if it cannot be read.</summary>
+    public DisplayMode? GetCurrentMode(string deviceName)
+    {
+        var devMode = CreateDevMode();
+        if (!EnumDisplaySettings(deviceName, EnumCurrentSettings, ref devMode))
+        {
+            return null;
+        }
+
+        return new DisplayMode
+        {
+            Width = (int)devMode.dmPelsWidth,
+            Height = (int)devMode.dmPelsHeight,
+            RefreshRateHz = (int)devMode.dmDisplayFrequency,
+            BitsPerPixel = (int)devMode.dmBitsPerPel,
+        };
+    }
+
+    /// <summary>
+    /// Applies a resolution + refresh-rate change to one monitor. Validates with
+    /// CDS_TEST first, then commits with CDS_UPDATEREGISTRY. Throws with a
+    /// descriptive message on failure (leaving the current mode untouched).
+    /// </summary>
+    public void ApplyDisplayMode(string deviceName, DisplayMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(mode);
+
+        var devMode = CreateDevMode();
+        if (!EnumDisplaySettings(deviceName, EnumCurrentSettings, ref devMode))
+        {
+            throw new InvalidOperationException($"Could not read current settings for {deviceName}.");
+        }
+
+        devMode.dmPelsWidth = (uint)mode.Width;
+        devMode.dmPelsHeight = (uint)mode.Height;
+        devMode.dmFields = DmPelsWidth | DmPelsHeight;
+
+        if (mode.RefreshRateHz > 0)
+        {
+            devMode.dmDisplayFrequency = (uint)mode.RefreshRateHz;
+            devMode.dmFields |= DmDisplayFrequency;
+        }
+
+        var test = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CdsTest, IntPtr.Zero);
+        if (test != DispChangeSuccessful)
+        {
+            throw new InvalidOperationException(
+                $"{mode.Label} is not supported on this display — {DescribeDispChange(test)}.");
+        }
+
+        var apply = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CdsUpdateRegistry, IntPtr.Zero);
+        if (apply != DispChangeSuccessful && apply != DispChangeRestart)
+        {
+            throw new InvalidOperationException(
+                $"Could not apply {mode.Label} — {DescribeDispChange(apply)}.");
+        }
+
+        AppLogger.Log($"Applied display mode {mode.Label} to {deviceName} (result {apply}).");
+    }
+
     private static bool TrySetPrimaryViaDisplayConfig(MonitorInfo target, IReadOnlyList<MonitorInfo> monitors, out string error)
     {
         error = string.Empty;
