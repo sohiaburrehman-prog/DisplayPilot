@@ -10,7 +10,7 @@ Windows installer for DisplayPilot, built with [Inno Setup 6](https://jrsoftware
 
 ## Build the app
 
-From the project root (`PrimaryDisplaySwap`):
+From the repo root (`DisplayPilot/`):
 
 ```powershell
 dotnet build -c Release

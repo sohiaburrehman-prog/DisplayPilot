@@ -6,8 +6,6 @@ A lightweight Windows system-tray utility that changes which monitor is the **pr
 
 **Download:** [Latest release](https://github.com/sohiaburrehman-prog/DisplayPilot/releases/latest)
 
-> **Note:** The source folder is still named `PrimaryDisplaySwap`; the product name is **DisplayPilot**.
-
 ## Screenshots
 
 | Flyout panel | Settings | Tray menu |
@@ -72,7 +70,7 @@ Look for `Microsoft.WindowsDesktop.App 8.x`.
 ## Build (development)
 
 ```powershell
-cd "C:\Users\SOF\Documents\Personal Documents\PrimaryDisplaySwap"
+# From the repo root (DisplayPilot/)
 dotnet build -c Release
 dotnet run -c Release
 ```
@@ -116,7 +114,7 @@ Files in `%LOCALAPPDATA%\DisplayPilot\`:
 ## Project structure
 
 ```
-PrimaryDisplaySwap/              # repo folder (legacy name; product = DisplayPilot)
+DisplayPilot/                      # repo root
 ├── Assets/AppIcon.ico
 ├── Native/DisplayInterop.cs     # P/Invoke surface
 ├── Services/
