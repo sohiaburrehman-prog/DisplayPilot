@@ -10,14 +10,23 @@ A lightweight Windows system-tray utility that changes which monitor is the **pr
 
 ## Screenshots
 
-<!-- Drop PNGs into docs/screenshots/ and reference them here. -->
-<!-- Suggested shots: the flyout panel, the tray menu, the Settings window, the auto-swap profile editor. -->
-
 | Flyout panel | Settings | Tray menu |
 | --- | --- | --- |
 | `docs/screenshots/panel.png` | `docs/screenshots/settings.png` | `docs/screenshots/tray.png` |
 
-*(Replace the placeholders above with real screenshots — see `docs/screenshots/`.)*
+*(PNG files are not committed yet — add them before a public release; see below.)*
+
+### Capturing screenshots
+
+Use **Win+Shift+S** (Snipping Tool) to capture each view, then save PNGs with these exact names in `docs/screenshots/`:
+
+| Filename | What to capture |
+| --- | --- |
+| `panel.png` | Flyout panel open — monitor cards, arrangement map, resolution dropdowns |
+| `settings.png` | Settings window — hotkeys, auto-swap profiles, update check toggle |
+| `tray.png` | Tray right-click menu — monitor list, Settings, log, Exit |
+
+Optional fourth shot: `profiles.png` (auto-swap profile editor with a sample rule). After saving, the table above will render the images on GitHub automatically.
 
 ## Features
 

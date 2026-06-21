@@ -16,30 +16,44 @@ The Software may read and apply:
 
 This information stays on your device unless you choose to share log files yourself.
 
-3. INFORMATION NOT COLLECTED
+3. AUTO-SWAP PROFILES (LOCAL ONLY)
+If you enable per-app auto-swap profiles, DisplayPilot periodically checks which processes are running on your PC so it can match names you configured (for example, "game.exe"). This matching happens entirely on your device. DisplayPilot does not upload process lists, game activity, or profile rules to any server.
+
+4. LOCAL SETTINGS FILE
+DisplayPilot stores your preferences in %LOCALAPPDATA%\DisplayPilot\settings.json on your device. At a high level, this file may contain:
+  • rebindable hotkey bindings (open panel, optional cycle primary);
+  • auto-swap profile rules you create (process name, target monitor, restore-on-exit);
+  • optional update-check preferences (enabled/disabled, last check time, dismissed release tag).
+
+This file is not transmitted automatically. You may delete it at any time; DisplayPilot will recreate defaults on next launch.
+
+5. OPTIONAL UPDATE CHECK
+When enabled in Settings, DisplayPilot may contact the public GitHub releases API for this project to learn whether a newer version tag exists. This request sends only what is needed to read release metadata (no account, no device identifier, no analytics). The check can be disabled at any time and is not required for display switching.
+
+6. INFORMATION NOT COLLECTED
 DisplayPilot does not intentionally collect:
   • names, email addresses, or account credentials;
-  • browsing history or game activity;
+  • browsing history or unrelated application activity;
   • precise location;
   • payment information.
 
-4. NETWORK ACTIVITY
-The Software does not require an internet connection to swap primary displays. No telemetry endpoints are built into the core application.
+7. NETWORK ACTIVITY
+The Software does not require an internet connection to swap primary displays or apply display modes. Aside from the optional update check described above, no telemetry endpoints are built into the application.
 
-5. THIRD PARTIES
-DisplayPilot uses Microsoft .NET and Windows APIs only. Your use of Windows is subject to Microsoft's terms and privacy practices.
+8. THIRD PARTIES
+DisplayPilot uses Microsoft .NET and Windows APIs only. When the optional update check is enabled, it reads public release metadata from GitHub (subject to GitHub's terms). Your use of Windows is subject to Microsoft's terms and privacy practices.
 
-6. DATA RETENTION
-Log files remain on your device until you delete them or uninstall the Software. Uninstalling removes the application files under %LOCALAPPDATA%\DisplayPilot\ except items you created separately.
+9. DATA RETENTION
+Log files and settings.json remain on your device until you delete them or uninstall the Software. Uninstalling removes the application files under %LOCALAPPDATA%\DisplayPilot\ except items you created separately.
 
-7. CHILDREN
+10. CHILDREN
 The Software is a general-purpose system utility and is not directed at children under 13.
 
-8. CHANGES
+11. CHANGES
 This policy may be updated in future releases. The "Last updated" date will change when it does.
 
-9. YOUR CHOICES
-You can disable "Start with Windows" in the tray menu, delete log.txt, and uninstall DisplayPilot at any time via Windows Settings or the supplied uninstaller.
+12. YOUR CHOICES
+You can disable "Start with Windows" in the tray menu, turn off the update check in Settings, delete or edit settings.json, delete log.txt, remove auto-swap profiles, and uninstall DisplayPilot at any time via Windows Settings or the supplied uninstaller.
 
-10. CONTACT
+13. CONTACT
 Privacy questions may be sent to Sohiab Rehman at sohiab.rehman@pm.me.
