@@ -531,6 +531,23 @@ public partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>Scrolls the profiles section into view; optionally opens the add-profile editor.</summary>
+    public void FocusProfilesSection(bool beginAdd = false)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => FocusProfilesSection(beginAdd));
+            return;
+        }
+
+        ProfilesSectionAnchor.BringIntoView();
+
+        if (beginAdd && ProfileEditor.Visibility != Visibility.Visible)
+        {
+            AddProfile_Click(this, new RoutedEventArgs());
+        }
+    }
+
     private void SetStatus(string message) => StatusText.Text = message;
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

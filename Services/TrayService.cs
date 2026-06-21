@@ -26,6 +26,7 @@ internal sealed class TrayService : IDisposable
     public event EventHandler? ExitRequested;
     public event EventHandler? PrimaryChanged;
     public event EventHandler? SettingsRequested;
+    public event EventHandler? ProfilesRequested;
     public event EventHandler? ViewLogRequested;
     public event EventHandler? CyclePrimaryRequested;
 
@@ -139,6 +140,8 @@ internal sealed class TrayService : IDisposable
             _menu.Items.Add(CreateDisabled($"Error: {ex.Message}"));
         }
 
+        AddProfilesSection();
+
         _menu.Items.Add(new ToolStripSeparator());
 
         var cyclePrimaryItem = new ToolStripMenuItem("Cycle &primary display");
@@ -173,6 +176,28 @@ internal sealed class TrayService : IDisposable
         var exitItem = new ToolStripMenuItem("E&xit DisplayPilot");
         exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(exitItem);
+    }
+
+    private void AddProfilesSection()
+    {
+        _menu.Items.Add(new ToolStripSeparator());
+        _menu.Items.Add(CreateLabel("AUTO-SWAP", TrayMenuTags.Section));
+
+        var profiles = _settings.Current.Profiles;
+        var enabled = profiles.Count(p => p.Enabled);
+
+        var status = profiles.Count == 0
+            ? "No profiles yet"
+            : enabled == profiles.Count
+                ? $"{enabled} profile{(enabled == 1 ? "" : "s")} active"
+                : $"{enabled} of {profiles.Count} active";
+
+        _menu.Items.Add(CreateLabel(status, TrayMenuTags.Status));
+
+        var label = profiles.Count == 0 ? "&Add game profile…" : "&Manage game profiles…";
+        var profilesItem = new ToolStripMenuItem(label);
+        profilesItem.Click += (_, _) => ProfilesRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(profilesItem);
     }
 
     private void AddSwapAction(IReadOnlyList<MonitorInfo> monitors)

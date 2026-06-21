@@ -28,6 +28,7 @@ namespace PrimaryDisplaySwap;
 public partial class PanelWindow : Window
 {
     public event EventHandler? SettingsRequested;
+    public event EventHandler? ProfilesRequested;
     public event EventHandler? ViewLogRequested;
 
     private string _updateReleaseUrl = string.Empty;
@@ -176,6 +177,8 @@ public partial class PanelWindow : Window
         _suppressStartupEvent = true;
         StartupToggle.IsChecked = _startupService.IsEnabled;
         _suppressStartupEvent = false;
+
+        RefreshProfilesSummary();
 
         MonitorList.Children.Clear();
 
@@ -971,8 +974,38 @@ public partial class PanelWindow : Window
         }
     }
 
+    /// <summary>Updates the auto-swap profile summary card on the flyout.</summary>
+    public void RefreshProfilesSummary()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(RefreshProfilesSummary);
+            return;
+        }
+
+        var profiles = _settings.Current.Profiles;
+        var enabled = profiles.Count(p => p.Enabled);
+
+        if (profiles.Count == 0)
+        {
+            ProfilesSummaryText.Text = "Switch primary when a game or app starts";
+            ProfilesManageHint.Text = "Add ›";
+            ProfilesCard.ToolTip = "Add an auto-swap profile in Settings";
+            return;
+        }
+
+        ProfilesSummaryText.Text = enabled == profiles.Count
+            ? $"{enabled} profile{(enabled == 1 ? "" : "s")} active"
+            : $"{enabled} of {profiles.Count} active";
+        ProfilesManageHint.Text = "Manage ›";
+        ProfilesCard.ToolTip = "Open Settings to manage auto-swap profiles";
+    }
+
     private void Settings_Click(object sender, RoutedEventArgs e) =>
         SettingsRequested?.Invoke(this, EventArgs.Empty);
+
+    private void ProfilesCard_Click(object sender, RoutedEventArgs e) =>
+        ProfilesRequested?.Invoke(this, EventArgs.Empty);
 
     private void ViewLog_Click(object sender, RoutedEventArgs e) =>
         ViewLogRequested?.Invoke(this, EventArgs.Empty);

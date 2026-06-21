@@ -203,6 +203,60 @@
                     </StackPanel>
                 </Button>
 
+                <!-- Auto-swap profiles — summary + link to Settings -->
+                <Button x:Name="ProfilesCard"
+                        Style="{StaticResource MonitorCard}"
+                        Margin="0,14,0,0"
+                        Click="ProfilesCard_Click">
+                    <Grid Margin="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Width="32" Height="32"
+                                CornerRadius="8"
+                                VerticalAlignment="Center"
+                                Margin="0,0,12,0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#334F8DFF" Offset="0" />
+                                    <GradientStop Color="#339D6BFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <TextBlock Text="&#xE7FC;"
+                                       FontFamily="{StaticResource IconFont}"
+                                       FontSize="15"
+                                       Foreground="{StaticResource AccentHoverBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Auto-swap profiles"
+                                       FontFamily="{StaticResource UiFont}"
+                                       FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock x:Name="ProfilesSummaryText"
+                                       Text="Add a game profile"
+                                       FontFamily="{StaticResource UiFont}"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="2"
+                                   x:Name="ProfilesManageHint"
+                                   Text="Add ›"
+                                   FontFamily="{StaticResource UiFont}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource AccentHoverBrush}" />
+                    </Grid>
+                </Button>
+
                 <!-- Start with Windows -->
                 <Grid Margin="2,18,2,0">
                     <Grid.ColumnDefinitions>

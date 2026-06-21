@@ -48,6 +48,7 @@ public partial class App : System.Windows.Application
 
         _panel = new PanelWindow(_displayManager, _startupService, _settings);
         _panel.SettingsRequested += (_, _) => ShowSettings();
+        _panel.ProfilesRequested += (_, _) => ShowSettings(focusProfiles: true, beginAddProfile: _settings.Current.Profiles.Count == 0);
         _panel.ViewLogRequested += (_, _) => ShowLog();
 
         // Create the window handle without showing the window, so the global
@@ -65,6 +66,7 @@ public partial class App : System.Windows.Application
         _tray.ExitRequested += (_, _) => ExitApplication();
         _tray.PrimaryChanged += (_, _) => _panel?.RefreshMonitors();
         _tray.SettingsRequested += (_, _) => ShowSettings();
+        _tray.ProfilesRequested += (_, _) => ShowSettings(focusProfiles: true, beginAddProfile: _settings.Current.Profiles.Count == 0);
         _tray.ViewLogRequested += (_, _) => ShowLog();
         _tray.CyclePrimaryRequested += (_, _) => CyclePrimary();
         _tray.Install();
@@ -109,6 +111,7 @@ public partial class App : System.Windows.Application
             ApplyHotkeys(announce: true);
             _processWatcher?.Reconfigure();
             _panel?.RefreshHotkeyHints();
+            _panel?.RefreshProfilesSummary();
             _tray?.RefreshMenu();
         });
     }
@@ -240,17 +243,25 @@ public partial class App : System.Windows.Application
         _panel.ShowNearTray();
     }
 
-    private void ShowSettings()
+    private void ShowSettings(bool focusProfiles = false, bool beginAddProfile = false)
     {
         if (_settingsWindow is null)
         {
             _settingsWindow = new SettingsWindow(_displayManager, _settings);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();
+            if (focusProfiles)
+            {
+                _settingsWindow.FocusProfilesSection(beginAddProfile);
+            }
         }
         else
         {
             _settingsWindow.Activate();
+            if (focusProfiles)
+            {
+                _settingsWindow.FocusProfilesSection(beginAddProfile);
+            }
         }
     }
 
