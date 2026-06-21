@@ -50,6 +50,7 @@ public partial class PanelWindow : Window
     private bool _suppressStartupEvent;
     private bool _swapInProgress;
     private string _swapButtonIdleText = "Swap Displays";
+    private readonly List<Action> _pendingModeLoads = [];
 
     public PanelWindow(DisplayManager displayManager, StartupService startupService, SettingsService settings)
     {
@@ -71,6 +72,8 @@ public partial class PanelWindow : Window
                 HideToTray();
             }
         };
+
+        PanelTabs.SelectionChanged += (_, _) => LoadPendingModeEditors();
 
         // Flyout behaviour: clicking elsewhere dismisses the panel. Defer one
         // frame so opening the tray context menu does not instantly hide the flyout.
@@ -181,6 +184,8 @@ public partial class PanelWindow : Window
         RefreshProfilesSummary();
 
         MonitorList.Children.Clear();
+        MoreMonitorList.Children.Clear();
+        _pendingModeLoads.Clear();
 
         IReadOnlyList<MonitorInfo> monitors;
         try
@@ -195,8 +200,17 @@ public partial class PanelWindow : Window
             EmptyStateHost.Visibility = Visibility.Visible;
             SwapButton.Visibility = Visibility.Collapsed;
             MapHost.Visibility = Visibility.Collapsed;
+            MoreEmptyStateHost.Visibility = Visibility.Visible;
             return;
         }
+
+        MoreEmptyStateHost.Visibility = monitors.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var monitor in monitors)
+        {
+            MoreMonitorList.Children.Add(BuildResolutionEntry(monitor));
+        }
+
+        LoadPendingModeEditors();
 
         if (monitors.Count <= 1)
         {
@@ -231,7 +245,7 @@ public partial class PanelWindow : Window
 
         foreach (var monitor in monitors)
         {
-            MonitorList.Children.Add(BuildMonitorEntry(monitor, monitors.Count > 2));
+            MonitorList.Children.Add(BuildMonitorCard(monitor, monitors.Count > 2));
         }
 
         if (monitors.Count > 2)
@@ -243,10 +257,37 @@ public partial class PanelWindow : Window
             StatusText.Text = string.Empty;
         }
 
-        if (IsVisible)
+        if (IsVisible && PanelTabs.SelectedIndex == 0)
         {
             PlayCardStagger();
         }
+    }
+
+    /// <summary>Switches to the More tab (resolution &amp; profiles).</summary>
+    public void FocusMoreTab()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(FocusMoreTab);
+            return;
+        }
+
+        PanelTabs.SelectedIndex = 1;
+    }
+
+    private void LoadPendingModeEditors()
+    {
+        if (PanelTabs.SelectedIndex != 1 || _pendingModeLoads.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var load in _pendingModeLoads)
+        {
+            load();
+        }
+
+        _pendingModeLoads.Clear();
     }
 
     /// <summary>Draws the physical monitor arrangement to scale, like the
@@ -445,46 +486,25 @@ public partial class PanelWindow : Window
         }
     }
 
-    /// <summary>A monitor card plus a collapsible resolution / refresh editor.</summary>
-    private UIElement BuildMonitorEntry(MonitorInfo monitor, bool showSetPrimaryHint)
-    {
-        var container = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
-        container.Children.Add(BuildMonitorCard(monitor, showSetPrimaryHint));
-        container.Children.Add(BuildModeEditor(monitor));
-        return container;
-    }
-
     /// <summary>
-    /// Expandable per-monitor resolution + refresh selector. Modes are loaded
-    /// lazily on first expand to keep panel refreshes fast.
+    /// Per-monitor resolution + refresh card for the More tab. Modes load
+    /// lazily when that tab is first selected to keep refreshes fast.
     /// </summary>
-    private UIElement BuildModeEditor(MonitorInfo monitor)
+    private UIElement BuildResolutionEntry(MonitorInfo monitor)
     {
         var deviceName = monitor.DeviceName;
-
-        var toggle = new System.Windows.Controls.Primitives.ToggleButton
-        {
-            Cursor = Cursors.Hand,
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            Margin = new Thickness(2, 0, 0, 0),
-            Foreground = (Brush)FindResource("TextMutedBrush"),
-            Content = "Resolution & refresh ▾",
-            FontFamily = (FontFamily)FindResource("UiFont"),
-            FontSize = 10.5,
-            Template = (ControlTemplate)FindResource("LinkToggleTemplate"),
-        };
 
         var resolutionCombo = new ComboBox
         {
             Style = (Style)FindResource("DarkComboBox"),
             Margin = new Thickness(0, 0, 6, 0),
+            IsEnabled = false,
         };
         var refreshCombo = new ComboBox
         {
             Style = (Style)FindResource("DarkComboBox"),
             Width = 96,
+            IsEnabled = false,
         };
         var applyButton = new Button
         {
@@ -495,7 +515,7 @@ public partial class PanelWindow : Window
             IsEnabled = false,
         };
 
-        var grid = new Grid { Margin = new Thickness(2, 8, 2, 2) };
+        var grid = new Grid { Margin = new Thickness(0, 10, 0, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -505,9 +525,6 @@ public partial class PanelWindow : Window
         grid.Children.Add(resolutionCombo);
         grid.Children.Add(refreshCombo);
         grid.Children.Add(applyButton);
-
-        var panel = new StackPanel { Visibility = Visibility.Collapsed };
-        panel.Children.Add(grid);
 
         var loaded = false;
         IReadOnlyList<DisplayMode> modes = Array.Empty<DisplayMode>();
@@ -529,6 +546,47 @@ public partial class PanelWindow : Window
             refreshCombo.SelectedItem = rates.FirstOrDefault();
         }
 
+        void LoadModes()
+        {
+            if (loaded)
+            {
+                return;
+            }
+
+            loaded = true;
+            modes = _displayManager.GetAvailableModes(deviceName);
+            var current = _displayManager.GetCurrentMode(deviceName);
+
+            var resolutions = modes
+                .GroupBy(m => (m.Width, m.Height))
+                .Select(g => g.First())
+                .ToList();
+
+            resolutionCombo.ItemsSource = resolutions;
+            resolutionCombo.DisplayMemberPath = nameof(DisplayMode.ResolutionLabel);
+            resolutionCombo.IsEnabled = resolutions.Count > 0;
+            refreshCombo.IsEnabled = resolutions.Count > 0;
+
+            if (current is not null)
+            {
+                resolutionCombo.SelectedItem = resolutions
+                    .FirstOrDefault(m => m.Width == current.Width && m.Height == current.Height);
+            }
+
+            resolutionCombo.SelectedItem ??= resolutions.FirstOrDefault();
+            PopulateRefreshRates();
+
+            if (current is not null)
+            {
+                refreshCombo.SelectedItem = (refreshCombo.ItemsSource as IEnumerable<DisplayMode>)?
+                    .FirstOrDefault(m => m.RefreshRateHz == current.RefreshRateHz) ?? refreshCombo.SelectedItem;
+            }
+
+            applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
+        }
+
+        _pendingModeLoads.Add(LoadModes);
+
         resolutionCombo.SelectionChanged += (_, _) =>
         {
             PopulateRefreshRates();
@@ -536,47 +594,6 @@ public partial class PanelWindow : Window
         };
         refreshCombo.SelectionChanged += (_, _) =>
             applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
-
-        toggle.Checked += (_, _) =>
-        {
-            panel.Visibility = Visibility.Visible;
-            toggle.Content = "Resolution & refresh ▴";
-
-            if (!loaded)
-            {
-                loaded = true;
-                modes = _displayManager.GetAvailableModes(deviceName);
-                var current = _displayManager.GetCurrentMode(deviceName);
-
-                var resolutions = modes
-                    .GroupBy(m => (m.Width, m.Height))
-                    .Select(g => g.First())
-                    .ToList();
-
-                resolutionCombo.ItemsSource = resolutions;
-                resolutionCombo.DisplayMemberPath = nameof(DisplayMode.ResolutionLabel);
-
-                if (current is not null)
-                {
-                    resolutionCombo.SelectedItem = resolutions
-                        .FirstOrDefault(m => m.Width == current.Width && m.Height == current.Height);
-                }
-
-                resolutionCombo.SelectedItem ??= resolutions.FirstOrDefault();
-                PopulateRefreshRates();
-
-                if (current is not null)
-                {
-                    refreshCombo.SelectedItem = (refreshCombo.ItemsSource as IEnumerable<DisplayMode>)?
-                        .FirstOrDefault(m => m.RefreshRateHz == current.RefreshRateHz) ?? refreshCombo.SelectedItem;
-                }
-            }
-        };
-        toggle.Unchecked += (_, _) =>
-        {
-            panel.Visibility = Visibility.Collapsed;
-            toggle.Content = "Resolution & refresh ▾";
-        };
 
         applyButton.Click += async (_, _) =>
         {
@@ -600,14 +617,44 @@ public partial class PanelWindow : Window
             finally
             {
                 SetBusy(false);
-                applyButton.IsEnabled = true;
+                applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
             }
         };
 
-        var wrapper = new StackPanel { Margin = new Thickness(8, 2, 0, 0) };
-        wrapper.Children.Add(toggle);
-        wrapper.Children.Add(panel);
-        return wrapper;
+        var card = new Border
+        {
+            Background = (Brush)FindResource("CardBrush"),
+            BorderBrush = (Brush)FindResource("HairlineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+
+        var header = new StackPanel();
+        header.Children.Add(new TextBlock
+        {
+            Text = monitor.NumberedName,
+            FontFamily = (FontFamily)FindResource("UiFont"),
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("TextPrimaryBrush"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        header.Children.Add(new TextBlock
+        {
+            Text = monitor.SpecsLabel,
+            FontFamily = (FontFamily)FindResource("UiFont"),
+            FontSize = 11,
+            Foreground = (Brush)FindResource("TextMutedBrush"),
+            Margin = new Thickness(0, 2, 0, 0),
+        });
+
+        var content = new StackPanel();
+        content.Children.Add(header);
+        content.Children.Add(grid);
+        card.Child = content;
+        return card;
     }
 
     private UIElement BuildMonitorCard(MonitorInfo monitor, bool showSetPrimaryHint)
@@ -616,6 +663,7 @@ public partial class PanelWindow : Window
         {
             Style = (Style)FindResource("MonitorCard"),
             Height = showSetPrimaryHint && !monitor.IsPrimary ? 72 : 64,
+            Margin = new Thickness(0, 0, 0, 8),
             IsEnabled = !monitor.IsPrimary && !_swapInProgress,
             ToolTip = monitor.IsPrimary
                 ? $"{monitor.NumberedName} is the primary display"
@@ -835,7 +883,9 @@ public partial class PanelWindow : Window
     {
         SwapButton.IsEnabled = !busy;
         MonitorList.IsEnabled = !busy;
+        MoreMonitorList.IsEnabled = !busy;
         MapHost.IsEnabled = !busy;
+        PanelTabs.IsEnabled = !busy;
 
         if (busy)
         {
