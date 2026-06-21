@@ -263,12 +263,12 @@ public partial class PanelWindow : Window
         }
     }
 
-    /// <summary>Switches to the More tab (resolution &amp; profiles).</summary>
-    public void FocusMoreTab()
+    /// <summary>Switches to the Advanced tab (resolution &amp; profiles).</summary>
+    public void FocusAdvancedTab()
     {
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.BeginInvoke(FocusMoreTab);
+            Dispatcher.BeginInvoke(FocusAdvancedTab);
             return;
         }
 
@@ -487,7 +487,7 @@ public partial class PanelWindow : Window
     }
 
     /// <summary>
-    /// Per-monitor resolution + refresh card for the More tab. Modes load
+    /// Per-monitor resolution + refresh card for the Advanced tab. Modes load
     /// lazily when that tab is first selected to keep refreshes fast.
     /// </summary>
     private UIElement BuildResolutionEntry(MonitorInfo monitor)
@@ -497,21 +497,23 @@ public partial class PanelWindow : Window
         var resolutionCombo = new ComboBox
         {
             Style = (Style)FindResource("DarkComboBox"),
-            Margin = new Thickness(0, 0, 6, 0),
+            Margin = new Thickness(0, 0, 4, 0),
+            MinWidth = 100,
             IsEnabled = false,
         };
         var refreshCombo = new ComboBox
         {
             Style = (Style)FindResource("DarkComboBox"),
-            Width = 96,
+            Width = 84,
+            Margin = new Thickness(0, 0, 4, 0),
             IsEnabled = false,
         };
         var applyButton = new Button
         {
             Style = (Style)FindResource("AccentMiniButton"),
             Content = "Apply",
-            Width = 72,
-            Margin = new Thickness(6, 0, 0, 0),
+            MinWidth = 58,
+            Padding = new Thickness(10, 0, 10, 0),
             IsEnabled = false,
         };
 

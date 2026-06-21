@@ -228,8 +228,8 @@
                         </StackPanel>
                     </TabItem>
 
-                    <!-- ═══════ Tab 2 — More (resolution + profiles) ═══════ -->
-                    <TabItem Header="More">
+                    <!-- ═══════ Tab 2 — Advanced (resolution + profiles) ═══════ -->
+                    <TabItem Header="Advanced">
                         <StackPanel>
                             <TextBlock Text="RESOLUTION &amp; REFRESH"
                                        FontFamily="{StaticResource UiFont}"
