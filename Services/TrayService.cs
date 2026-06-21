@@ -103,7 +103,9 @@ internal sealed class TrayService : IDisposable
             if (monitors.Count > 0)
             {
                 var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
-                _menu.Items.Add(CreateLabel($"Primary: {primary.Name}", TrayMenuTags.Status));
+                _menu.Items.Add(CreateLabel(
+                    $"Primary: {MonitorDisplayHelper.GetDisplayName(primary, _settings.Current)}",
+                    TrayMenuTags.Status));
             }
 
             _menu.Items.Add(new ToolStripSeparator());
@@ -116,7 +118,7 @@ internal sealed class TrayService : IDisposable
             else if (monitors.Count == 1)
             {
                 var only = monitors[0];
-                _menu.Items.Add(CreateDisabled($"{only.NumberedName}  —  {only.SpecsLabel}"));
+                _menu.Items.Add(CreateDisabled($"{MonitorDisplayHelper.GetNumberedName(only, _settings.Current)}  —  {only.SpecsLabel}"));
                 _menu.Items.Add(CreateDisabled("Connect another display to swap"));
             }
             else
@@ -204,7 +206,9 @@ internal sealed class TrayService : IDisposable
     {
         var primary = monitors.First(m => m.IsPrimary);
         var other = monitors.First(m => !m.IsPrimary);
-        var swapText = $"⇄  Swap: {primary.Index + 1} ↔ {other.Index + 1}  ({primary.Name} ↔ {other.Name})";
+        var primaryName = MonitorDisplayHelper.GetDisplayName(primary, _settings.Current);
+        var otherName = MonitorDisplayHelper.GetDisplayName(other, _settings.Current);
+        var swapText = $"⇄  Swap: {primary.Index + 1} ↔ {other.Index + 1}  ({primaryName} ↔ {otherName})";
 
         var swapItem = new ToolStripMenuItem(swapText)
         {
@@ -218,7 +222,7 @@ internal sealed class TrayService : IDisposable
 
     private void AddMonitorItem(MonitorInfo monitor, bool showSetPrimaryHint)
     {
-        var label = monitor.TrayMenuLine;
+        var label = MonitorDisplayHelper.GetTrayMenuLine(monitor, _settings.Current);
         if (!monitor.IsPrimary && showSetPrimaryHint)
         {
             label += "  —  click to set primary";
@@ -382,8 +386,8 @@ internal sealed class TrayService : IDisposable
             try
             {
                 var newPrimary = _displayManager.SetPrimaryMonitor(monitorIndex);
-                AppLogger.Log($"Tray: primary set to {newPrimary.Name}.");
-                ShowFeedback($"{newPrimary.Name} is now primary.");
+                AppLogger.Log($"Tray: primary set to {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)}.");
+                ShowFeedback($"{MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.");
                 PrimaryChanged?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
@@ -402,8 +406,8 @@ internal sealed class TrayService : IDisposable
             try
             {
                 var newPrimary = _displayManager.SwapPrimaryBetweenTwoMonitors();
-                AppLogger.Log($"Tray: swapped primary to {newPrimary.Name}.");
-                ShowFeedback($"Swapped — {newPrimary.Name} is now primary.");
+                AppLogger.Log($"Tray: swapped primary to {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)}.");
+                ShowFeedback($"Swapped — {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.");
                 PrimaryChanged?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
@@ -424,9 +428,10 @@ internal sealed class TrayService : IDisposable
         }
 
         var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+        var primaryLabel = MonitorDisplayHelper.GetDisplayName(primary, _settings.Current);
         var text = monitors.Count == 1
-            ? $"{AppInfo.AppName} — {primary.Name}"
-            : $"{AppInfo.AppName} — primary: {primary.Name} ({monitors.Count} displays)";
+            ? $"{AppInfo.AppName} — {primaryLabel}"
+            : $"{AppInfo.AppName} — primary: {primaryLabel} ({monitors.Count} displays)";
 
         // NotifyIcon.Text is limited to 63 characters.
         _notifyIcon.Text = text.Length <= 63 ? text : text[..60] + "…";

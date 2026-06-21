@@ -9,6 +9,8 @@
   <ItemGroup>
     <Compile Include="..\..\Services\DisplayManager.cs" />
     <Compile Include="..\..\Services\ProfileMatcher.cs" />
+    <Compile Include="..\..\Services\MonitorDisplayHelper.cs" />
+    <Compile Include="..\..\Services\SettingsService.cs" />
     <Compile Include="..\..\Services\HotkeyService.cs" />
     <Compile Include="..\..\Services\UpdateService.cs" />
     <Compile Include="..\..\AppInfo.cs" />

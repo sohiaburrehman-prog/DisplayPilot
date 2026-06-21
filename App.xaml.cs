@@ -98,7 +98,29 @@ public partial class App : System.Windows.Application
 
         _ = RunUpdateCheckAsync();
 
+        if (!_settings.Current.FirstRunCompleted)
+        {
+            ShowFirstRunWizard();
+            return;
+        }
+
         if (!_launchedAtStartup)
+        {
+            ShowPanel();
+        }
+    }
+
+    private void ShowFirstRunWizard()
+    {
+        var wizard = new WizardWindow(_displayManager, _settings, _startupService);
+        var completed = wizard.ShowDialog() == true;
+
+        if (!completed)
+        {
+            _settings.Update(s => s.FirstRunCompleted = true);
+        }
+
+        if (wizard.SelectedFinishAction == WizardWindow.FinishAction.OpenPanel)
         {
             ShowPanel();
         }
@@ -112,7 +134,9 @@ public partial class App : System.Windows.Application
             _processWatcher?.Reconfigure();
             _panel?.RefreshHotkeyHints();
             _panel?.RefreshProfilesSummary();
+            _panel?.RefreshMonitors();
             _tray?.RefreshMenu();
+            _settingsWindow?.RefreshMonitors();
         });
     }
 
@@ -170,7 +194,7 @@ public partial class App : System.Windows.Application
                 Dispatcher.BeginInvoke(() =>
                 {
                     _panel?.RefreshMonitors();
-                    _panel?.ShowExternalStatus($"Primary set to {newPrimary.Name}.", success: true);
+                    _panel?.ShowExternalStatus($"Primary set to {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)}.", success: true);
                     _tray?.RefreshMenu();
                 });
             }

@@ -31,8 +31,14 @@ public sealed class AppProfile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
-    /// <summary>Process executable name, with or without ".exe" (e.g. "game.exe").</summary>
+    /// <summary>Process executable name, with or without ".exe" (e.g. "game.exe" or "steam.exe").</summary>
     public string ProcessName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When <see cref="ProcessName"/> is a launcher, the actual game exe to watch.
+    /// Matching uses this when set; otherwise the launcher process alone triggers the profile.
+    /// </summary>
+    public string ResolvedTargetProcessName { get; set; } = string.Empty;
 
     /// <summary>Friendly monitor name captured when the profile was created.</summary>
     public string TargetMonitorName { get; set; } = string.Empty;
@@ -46,24 +52,57 @@ public sealed class AppProfile
     public bool Enabled { get; set; } = true;
 
     /// <summary>Normalized process name without extension, lower-case.</summary>
-    public string NormalizedProcessName
+    public string NormalizedProcessName => NormalizeProcessName(ProcessName);
+
+    /// <summary>Normalized resolved target without extension, lower-case.</summary>
+    public string NormalizedResolvedTarget => NormalizeProcessName(ResolvedTargetProcessName);
+
+    public bool HasResolvedTarget => !string.IsNullOrWhiteSpace(ResolvedTargetProcessName);
+
+    /// <summary>Human-readable label for lists, e.g. "Steam → eldenring.exe".</summary>
+    public string DisplayLabel
     {
         get
         {
-            var name = ProcessName?.Trim() ?? string.Empty;
-            if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            var process = FormatProcessLabel(ProcessName);
+            if (!HasResolvedTarget)
             {
-                name = name[..^4];
+                return process;
             }
 
-            return name.ToLowerInvariant();
+            return $"{process} → {FormatProcessLabel(ResolvedTargetProcessName)}";
         }
+    }
+
+    private static string FormatProcessLabel(string name)
+    {
+        var trimmed = name?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return trimmed;
+        }
+
+        return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? trimmed[..^4]
+            : trimmed;
+    }
+
+    private static string NormalizeProcessName(string? name)
+    {
+        var trimmed = name?.Trim() ?? string.Empty;
+        if (trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[..^4];
+        }
+
+        return trimmed.ToLowerInvariant();
     }
 
     public AppProfile Clone() => new()
     {
         Id = Id,
         ProcessName = ProcessName,
+        ResolvedTargetProcessName = ResolvedTargetProcessName,
         TargetMonitorName = TargetMonitorName,
         TargetMonitorDeviceName = TargetMonitorDeviceName,
         RestoreOnExit = RestoreOnExit,
@@ -84,7 +123,15 @@ public sealed class AppSettings
     public const uint ModWin = 0x0008;
     public const uint VkM = 0x4D;
 
-    public int SchemaVersion { get; set; } = 1;
+    public const int CurrentSchemaVersion = 2;
+
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
+    /// <summary>False until the first-run wizard completes (or is skipped on upgrade).</summary>
+    public bool FirstRunCompleted { get; set; }
+
+    /// <summary>User nicknames keyed by GDI device name (\\.\DISPLAYn).</summary>
+    public Dictionary<string, string> MonitorNicknames { get; set; } = new();
 
     /// <summary>Opens the control panel. Defaults to Ctrl+Shift+M.</summary>
     public HotkeyConfig OpenPanelHotkey { get; set; } = new()
@@ -118,6 +165,8 @@ public sealed class AppSettings
     public AppSettings Clone() => new()
     {
         SchemaVersion = SchemaVersion,
+        FirstRunCompleted = FirstRunCompleted,
+        MonitorNicknames = new Dictionary<string, string>(MonitorNicknames),
         OpenPanelHotkey = OpenPanelHotkey.Clone(),
         CyclePrimaryHotkey = CyclePrimaryHotkey.Clone(),
         Profiles = Profiles.Select(p => p.Clone()).ToList(),

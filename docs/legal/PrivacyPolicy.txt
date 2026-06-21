@@ -22,7 +22,9 @@ If you enable per-app auto-swap profiles, DisplayPilot periodically checks which
 4. LOCAL SETTINGS FILE
 DisplayPilot stores your preferences in %LOCALAPPDATA%\DisplayPilot\settings.json on your device. At a high level, this file may contain:
   • rebindable hotkey bindings (open panel, optional cycle primary);
-  • auto-swap profile rules you create (process name, target monitor, restore-on-exit);
+  • custom monitor nicknames you assign (keyed by stable display device id);
+  • auto-swap profile rules you create (process or launcher name, optional resolved game exe, target monitor, restore-on-exit);
+  • first-run wizard completion flag;
   • optional update-check preferences (enabled/disabled, last check time, dismissed release tag).
 
 This file is not transmitted automatically. You may delete it at any time; DisplayPilot will recreate defaults on next launch.

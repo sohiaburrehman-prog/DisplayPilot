@@ -19,6 +19,12 @@ public partial class SettingsWindow : Window
 {
     private enum CaptureTarget { None, OpenPanel, Cycle }
 
+    private sealed class MonitorComboItem(MonitorInfo monitor, string label)
+    {
+        public MonitorInfo Monitor { get; } = monitor;
+        public string Label { get; } = label;
+    }
+
     private readonly DisplayManager _displayManager;
     private readonly SettingsService _settings;
 
@@ -34,6 +40,8 @@ public partial class SettingsWindow : Window
         InitializeComponent();
 
         PreviewKeyDown += OnPreviewKeyDown;
+
+        ProcessNameBox.TextChanged += (_, _) => UpdateResolvedTargetVisibility();
 
         LoadFromSettings();
         RebuildProfileList();
@@ -235,14 +243,25 @@ public partial class SettingsWindow : Window
         var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         info.Children.Add(new TextBlock
         {
-            Text = profile.ProcessName,
+            Text = profile.DisplayLabel,
             FontFamily = (FontFamily)FindResource("UiFont"),
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("TextPrimaryBrush"),
         });
 
-        var detail = $"→ {profile.TargetMonitorName}";
+        var targetLabel = profile.TargetMonitorName;
+        foreach (var monitor in SafeGetMonitors())
+        {
+            if (string.Equals(monitor.DeviceName, profile.TargetMonitorDeviceName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(monitor.Name, profile.TargetMonitorName, StringComparison.OrdinalIgnoreCase))
+            {
+                targetLabel = MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current);
+                break;
+            }
+        }
+
+        var detail = $"→ {targetLabel}";
         if (profile.RestoreOnExit)
         {
             detail += "  ·  restores on exit";
@@ -333,11 +352,25 @@ public partial class SettingsWindow : Window
         _editingProfileId = null;
         ProfileEditorTitle.Text = "New profile";
         ProcessNameBox.Text = string.Empty;
+        ResolvedTargetBox.Text = string.Empty;
         RestoreOnExitCheck.IsChecked = true;
         PopulateRunningProcesses();
         PopulateMonitorCombo();
+        UpdateResolvedTargetVisibility();
         TargetMonitorCombo.SelectedIndex = TargetMonitorCombo.Items.Count > 0 ? 0 : -1;
         ProfileEditor.Visibility = Visibility.Visible;
+    }
+
+    private IReadOnlyList<MonitorInfo> SafeGetMonitors()
+    {
+        try
+        {
+            return _displayManager.GetMonitors();
+        }
+        catch
+        {
+            return Array.Empty<MonitorInfo>();
+        }
     }
 
     private void BeginEditProfile(string id)
@@ -351,12 +384,16 @@ public partial class SettingsWindow : Window
         _editingProfileId = id;
         ProfileEditorTitle.Text = "Edit profile";
         ProcessNameBox.Text = profile.ProcessName;
+        ResolvedTargetBox.Text = profile.ResolvedTargetProcessName;
         RestoreOnExitCheck.IsChecked = profile.RestoreOnExit;
         PopulateRunningProcesses();
         PopulateMonitorCombo();
+        UpdateResolvedTargetVisibility();
 
-        var match = TargetMonitorCombo.Items.OfType<MonitorInfo>()
-            .FirstOrDefault(m => string.Equals(m.Name, profile.TargetMonitorName, StringComparison.OrdinalIgnoreCase));
+        var match = TargetMonitorCombo.Items.OfType<MonitorComboItem>()
+            .FirstOrDefault(item =>
+                string.Equals(item.Monitor.Name, profile.TargetMonitorName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(item.Monitor.DeviceName, profile.TargetMonitorDeviceName, StringComparison.OrdinalIgnoreCase));
         if (match is not null)
         {
             TargetMonitorCombo.SelectedItem = match;
@@ -369,9 +406,11 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            var monitors = _displayManager.GetMonitors().ToList();
-            TargetMonitorCombo.ItemsSource = monitors;
-            TargetMonitorCombo.DisplayMemberPath = nameof(MonitorInfo.NumberedName);
+            var items = _displayManager.GetMonitors()
+                .Select(m => new MonitorComboItem(m, MonitorDisplayHelper.GetNumberedName(m, _settings.Current)))
+                .ToList();
+            TargetMonitorCombo.ItemsSource = items;
+            TargetMonitorCombo.DisplayMemberPath = nameof(MonitorComboItem.Label);
         }
         catch (Exception ex)
         {
@@ -383,22 +422,61 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            var names = Process.GetProcesses()
-                .Select(p =>
-                {
-                    try { return p.ProcessName; }
-                    catch { return string.Empty; }
-                    finally { p.Dispose(); }
-                })
-                .Where(n => !string.IsNullOrWhiteSpace(n))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-                .Select(n => n + ".exe")
-                .ToList();
+            RunningProcessCombo.Items.Clear();
+            RunningProcessCombo.Items.Add("Pick process…");
 
-            names.Insert(0, "Pick running app…");
-            RunningProcessCombo.ItemsSource = names;
+            foreach (var group in ProcessPickerHelper.BuildGroupedRunningProcesses())
+            {
+                if (group.Items.Count == 0)
+                {
+                    continue;
+                }
+
+                RunningProcessCombo.Items.Add(new ComboBoxItem
+                {
+                    Content = group.Header,
+                    IsEnabled = false,
+                    Foreground = (Brush)FindResource("TextMutedBrush"),
+                    FontWeight = FontWeights.Bold,
+                });
+
+                foreach (var item in group.Items)
+                {
+                    RunningProcessCombo.Items.Add(item);
+                }
+            }
+
+            var running = ProcessPickerHelper.BuildGroupedRunningProcesses()
+                .SelectMany(g => g.Items)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var notRunningLaunchers = LauncherCatalog.KnownLaunchers
+                .Where(l => !running.Contains(l))
+                .ToList();
+            if (notRunningLaunchers.Count > 0)
+            {
+                RunningProcessCombo.Items.Add(new ComboBoxItem
+                {
+                    Content = "Common launchers (not running)",
+                    IsEnabled = false,
+                    Foreground = (Brush)FindResource("TextMutedBrush"),
+                    FontWeight = FontWeights.Bold,
+                });
+                foreach (var launcher in notRunningLaunchers)
+                {
+                    RunningProcessCombo.Items.Add(launcher);
+                }
+            }
+
             RunningProcessCombo.SelectedIndex = 0;
+
+            ResolvedTargetCombo.Items.Clear();
+            ResolvedTargetCombo.Items.Add("Pick running game…");
+            foreach (var exe in ProcessPickerHelper.GetRunningExesExcludingLaunchers())
+            {
+                ResolvedTargetCombo.Items.Add(exe);
+            }
+
+            ResolvedTargetCombo.SelectedIndex = 0;
         }
         catch (Exception ex)
         {
@@ -408,10 +486,27 @@ public partial class SettingsWindow : Window
 
     private void RunningProcess_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (RunningProcessCombo.SelectedIndex > 0 && RunningProcessCombo.SelectedItem is string name)
+        if (RunningProcessCombo.SelectedItem is string name)
         {
             ProcessNameBox.Text = name;
+            UpdateResolvedTargetVisibility();
         }
+    }
+
+    private void ResolvedTarget_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (ResolvedTargetCombo.SelectedItem is string name)
+        {
+            ResolvedTargetBox.Text = name;
+        }
+    }
+
+    private void UpdateResolvedTargetVisibility()
+    {
+        var process = ProcessNameBox.Text.Trim();
+        ResolvedTargetPanel.Visibility = LauncherCatalog.IsKnownLauncher(process)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void SaveProfile_Click(object sender, RoutedEventArgs e)
@@ -423,13 +518,17 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        if (TargetMonitorCombo.SelectedItem is not MonitorInfo monitor)
+        if (TargetMonitorCombo.SelectedItem is not MonitorComboItem monitorItem)
         {
             SetStatus("Pick a target monitor first.");
             return;
         }
 
+        var monitor = monitorItem.Monitor;
         var restore = RestoreOnExitCheck.IsChecked == true;
+        var resolvedTarget = LauncherCatalog.IsKnownLauncher(processName)
+            ? ResolvedTargetBox.Text.Trim()
+            : string.Empty;
 
         _settings.Update(s =>
         {
@@ -442,6 +541,7 @@ public partial class SettingsWindow : Window
                 s.Profiles.Add(new AppProfile
                 {
                     ProcessName = processName,
+                    ResolvedTargetProcessName = resolvedTarget,
                     TargetMonitorName = monitor.Name,
                     TargetMonitorDeviceName = monitor.DeviceName,
                     RestoreOnExit = restore,
@@ -451,6 +551,7 @@ public partial class SettingsWindow : Window
             else
             {
                 existing.ProcessName = processName;
+                existing.ResolvedTargetProcessName = resolvedTarget;
                 existing.TargetMonitorName = monitor.Name;
                 existing.TargetMonitorDeviceName = monitor.DeviceName;
                 existing.RestoreOnExit = restore;

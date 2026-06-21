@@ -1,0 +1,71 @@
+<Window x:Class="PrimaryDisplaySwap.WizardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Welcome to DisplayPilot"
+        Width="480"
+        Height="560"
+        MinWidth="440"
+        MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource FlyoutOpaqueBrush}"
+        FontFamily="{StaticResource UiFont}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{StaticResource HeaderBrush}"
+                BorderBrush="{StaticResource HairlineBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="20,16">
+            <StackPanel>
+                <TextBlock x:Name="StepTitleText"
+                           Text="Welcome"
+                           FontSize="16" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+                <TextBlock x:Name="StepSubtitleText"
+                           Text="Step 1 of 6"
+                           FontSize="11"
+                           Margin="0,4,0,0"
+                           Foreground="{StaticResource TextMutedBrush}" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,16">
+            <StackPanel x:Name="StepHost" />
+        </ScrollViewer>
+
+        <Border Grid.Row="2"
+                Padding="16,14,16,16"
+                Background="{StaticResource HeaderBrush}"
+                BorderBrush="{StaticResource HairlineBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="BackButton" Grid.Column="0"
+                        Content="Back" Style="{StaticResource MiniButton}"
+                        Width="92" Visibility="Collapsed"
+                        Click="Back_Click" />
+
+                <Button x:Name="SkipButton" Grid.Column="0"
+                        Content="Skip" Style="{StaticResource MiniButton}"
+                        Width="92"
+                        Click="Skip_Click" />
+
+                <Button x:Name="NextButton" Grid.Column="2"
+                        Content="Next" Style="{StaticResource AccentMiniButton}"
+                        Width="110"
+                        Click="Next_Click" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

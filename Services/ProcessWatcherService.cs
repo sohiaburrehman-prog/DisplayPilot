@@ -104,7 +104,7 @@ public sealed class ProcessWatcherService : IDisposable
 
             foreach (var profile in profiles)
             {
-                var isRunning = runningNames.Contains(profile.NormalizedProcessName);
+                var isRunning = ProfileMatcher.IsProfileActive(profile, runningNames);
                 var wasRunning = _runningState.TryGetValue(profile.Id, out var prev) && prev;
                 _runningState[profile.Id] = isRunning;
 

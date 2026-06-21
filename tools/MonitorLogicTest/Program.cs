@@ -180,6 +180,35 @@ Check(ProfileMatcher.ProcessMatches(gameProfile, "game"), "ProcessMatches strips
 Check(ProfileMatcher.ProcessMatches(gameProfile, "GAME.EXE"), "ProcessMatches is case-insensitive and extension-insensitive");
 Check(!ProfileMatcher.ProcessMatches(gameProfile, "notgame"), "ProcessMatches rejects non-matching process");
 
+var launcherProfile = new AppProfile
+{
+    ProcessName = "steam.exe",
+    ResolvedTargetProcessName = "eldenring.exe",
+    TargetMonitorName = "LG 27GL850",
+    TargetMonitorDeviceName = @"\\.\DISPLAY2",
+};
+Check(launcherProfile.DisplayLabel == "steam → eldenring", $"Launcher profile label (got '{launcherProfile.DisplayLabel}')");
+Check(ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "steam" }),
+    "IsProfileActive matches launcher process");
+Check(ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "eldenring" }),
+    "IsProfileActive matches resolved game exe");
+Check(!ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "notepad" }),
+    "IsProfileActive rejects unrelated process");
+
+// ─────────────────── Monitor nicknames ───────────────────
+Console.WriteLine("\n== Monitor nickname persistence ==");
+var nicknameSettings = new AppSettings();
+nicknameSettings.MonitorNicknames[@"\\.\DISPLAY2"] = "Gaming screen";
+Check(MonitorDisplayHelper.GetDisplayName(dual[1], nicknameSettings) == "Gaming screen",
+    "Nickname overrides hardware name");
+Check(MonitorDisplayHelper.GetNumberedName(dual[1], nicknameSettings) == "2 · Gaming screen",
+    "Numbered name uses nickname");
+nicknameSettings.MonitorNicknames.Remove(@"\\.\DISPLAY2");
+Check(MonitorDisplayHelper.GetDisplayName(dual[1], nicknameSettings) == dual[1].Name,
+    "Removing nickname falls back to hardware name");
+
+Check(!new AppSettings().FirstRunCompleted, "FirstRunCompleted defaults false for fresh settings");
+
 // Simulated apply/restore sequencing: start on primary DISPLAY1, activate
 // profile -> DISPLAY2, then restore -> DISPLAY1.
 var simStatePrimary = dual.First(m => m.IsPrimary).DeviceName;
@@ -211,13 +240,21 @@ Check(settings.OpenPanelHotkey.Matches(conflicting), "Identical hotkeys report a
 Console.WriteLine("\n== Settings JSON serialization round-trip ==");
 
 settings.Profiles.Add(gameProfile);
+settings.Profiles.Add(launcherProfile);
 settings.AutoUpdateCheckEnabled = false;
+settings.FirstRunCompleted = true;
+settings.MonitorNicknames[@"\\.\DISPLAY1"] = "Desk";
 var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
 var restored = JsonSerializer.Deserialize<AppSettings>(json);
 
 Check(restored is not null, "Settings deserialize succeeds");
-Check(restored!.Profiles.Count == 1 && restored.Profiles[0].ProcessName == "game.exe",
+Check(restored!.Profiles.Count == 2 && restored.Profiles[0].ProcessName == "game.exe",
     "Profiles survive JSON round-trip");
+Check(restored.Profiles[1].ResolvedTargetProcessName == "eldenring.exe",
+    "Launcher resolved target survives JSON round-trip");
+Check(restored.MonitorNicknames.TryGetValue(@"\\.\DISPLAY1", out var nick) && nick == "Desk",
+    "Monitor nicknames survive JSON round-trip");
+Check(restored.FirstRunCompleted, "FirstRunCompleted survives JSON round-trip");
 Check(restored.OpenPanelHotkey.Key == settings.OpenPanelHotkey.Key &&
       restored.OpenPanelHotkey.Modifiers == settings.OpenPanelHotkey.Modifiers,
     "Open-panel hotkey survives JSON round-trip");

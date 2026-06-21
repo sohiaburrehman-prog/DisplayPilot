@@ -102,10 +102,13 @@ public sealed class SettingsService
 
     private void NormalizeLoaded()
     {
+        var upgraded = Current.SchemaVersion < AppSettings.CurrentSchemaVersion;
+
         Current.OpenPanelHotkey ??= new AppSettings().OpenPanelHotkey;
         Current.CyclePrimaryHotkey ??= new AppSettings().CyclePrimaryHotkey;
         Current.Profiles ??= new List<AppProfile>();
         Current.Profiles.RemoveAll(p => p is null);
+        Current.MonitorNicknames ??= new Dictionary<string, string>();
 
         foreach (var profile in Current.Profiles)
         {
@@ -113,11 +116,22 @@ public sealed class SettingsService
             {
                 profile.Id = Guid.NewGuid().ToString("N");
             }
+
+            profile.ResolvedTargetProcessName ??= string.Empty;
         }
 
         if (Current.ProcessWatchIntervalMs < 1000)
         {
             Current.ProcessWatchIntervalMs = 1000;
+        }
+
+        if (upgraded)
+        {
+            // Existing installs skip the first-run wizard.
+            Current.FirstRunCompleted = true;
+            Current.SchemaVersion = AppSettings.CurrentSchemaVersion;
+            Save_NoLock();
+            AppLogger.Log($"Settings migrated to schema v{AppSettings.CurrentSchemaVersion}.");
         }
     }
 

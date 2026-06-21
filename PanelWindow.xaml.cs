@@ -233,7 +233,7 @@ public partial class PanelWindow : Window
         {
             var primary = monitors.First(m => m.IsPrimary);
             var other = monitors.First(m => !m.IsPrimary);
-            _swapButtonIdleText = $"Swap {primary.Index + 1} ↔ {other.Index + 1}: {ShortName(primary.Name)} ↔ {ShortName(other.Name)}";
+            _swapButtonIdleText = $"Swap {primary.Index + 1} ↔ {other.Index + 1}: {ShortName(MonitorDisplayHelper.GetDisplayName(primary, _settings.Current))} ↔ {ShortName(MonitorDisplayHelper.GetDisplayName(other, _settings.Current))}";
             if (!_swapInProgress)
             {
                 SwapLabel.Text = _swapButtonIdleText;
@@ -334,7 +334,7 @@ public partial class PanelWindow : Window
                     : (Brush)FindResource("HairlineBrush"),
                 BorderThickness = new Thickness(monitor.IsPrimary ? 1.5 : 1),
                 Cursor = monitor.IsPrimary ? Cursors.Arrow : Cursors.Hand,
-                ToolTip = BuildMapTooltip(monitor),
+                ToolTip = MonitorDisplayHelper.GetMapTooltip(monitor, _settings.Current),
                 Tag = monitor,
             };
 
@@ -370,7 +370,7 @@ public partial class PanelWindow : Window
             {
                 labelStack.Children.Add(new TextBlock
                 {
-                    Text = ShortName(monitor.Name, 10),
+                    Text = ShortName(MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current), 10),
                     FontFamily = (FontFamily)FindResource("UiFont"),
                     FontSize = 8.5,
                     Foreground = monitor.IsPrimary
@@ -387,14 +387,14 @@ public partial class PanelWindow : Window
             screen.Child = labelStack;
 
             var index = monitor.Index;
-            var name = monitor.Name;
+            var displayName = MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current);
             var idleBrush = monitor.IsPrimary
                 ? (Brush)FindResource("ScreenGradientBrush")
                 : (Brush)FindResource("ScreenIdleBrush");
 
             if (!monitor.IsPrimary)
             {
-                screen.MouseLeftButtonUp += async (_, _) => await SetPrimaryAsync(index, name);
+                screen.MouseLeftButtonUp += async (_, _) => await SetPrimaryAsync(index, displayName);
             }
 
             screen.MouseEnter += (s, _) =>
@@ -441,10 +441,45 @@ public partial class PanelWindow : Window
         }
     }
 
-    private static string BuildMapTooltip(MonitorInfo monitor)
+    private void ShowRenameDialog(MonitorInfo monitor)
     {
-        var role = monitor.IsPrimary ? "primary" : "click to make primary";
-        return $"{monitor.NumberedName}\n{monitor.SpecsLabel}  ·  {role}";
+        _settings.Current.MonitorNicknames.TryGetValue(monitor.DeviceName, out var current);
+        var dialog = new RenameMonitorDialog(monitor, current)
+        {
+            Owner = this,
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        MonitorDisplayHelper.SetNickname(_settings, monitor, dialog.ResultNickname);
+        RefreshMonitors();
+        ShowStatus(
+            string.IsNullOrWhiteSpace(dialog.ResultNickname)
+                ? $"Using hardware name for {monitor.Name}."
+                : $"Renamed to \"{dialog.ResultNickname}\".",
+            success: true);
+    }
+
+    private UIElement CreateRenameLink(MonitorInfo monitor)
+    {
+        var link = new TextBlock
+        {
+            FontFamily = (FontFamily)FindResource("UiFont"),
+            FontSize = 10,
+            Margin = new Thickness(0, 3, 0, 0),
+        };
+        var hyperlink = new System.Windows.Documents.Hyperlink
+        {
+            Foreground = (Brush)FindResource("AccentHoverBrush"),
+            TextDecorations = null,
+        };
+        hyperlink.Inlines.Add("Rename");
+        hyperlink.Click += (_, _) => ShowRenameDialog(monitor);
+        link.Inlines.Add(hyperlink);
+        return link;
     }
 
     private static string ShortName(string name, int maxLen = 18)
@@ -610,7 +645,7 @@ public partial class PanelWindow : Window
                 SetBusy(true, $"Applying {chosen.Label}…");
                 await Task.Run(() => _displayManager.ApplyDisplayMode(deviceName, chosen));
                 RefreshMonitors();
-                ShowStatus($"{monitor.Name}: applied {chosen.Label}.", success: true);
+                ShowStatus($"{MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current)}: applied {chosen.Label}.", success: true);
             }
             catch (Exception ex)
             {
@@ -636,7 +671,7 @@ public partial class PanelWindow : Window
         var header = new StackPanel();
         header.Children.Add(new TextBlock
         {
-            Text = monitor.NumberedName,
+            Text = MonitorDisplayHelper.GetNumberedName(monitor, _settings.Current),
             FontFamily = (FontFamily)FindResource("UiFont"),
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
@@ -651,6 +686,7 @@ public partial class PanelWindow : Window
             Foreground = (Brush)FindResource("TextMutedBrush"),
             Margin = new Thickness(0, 2, 0, 0),
         });
+        header.Children.Add(CreateRenameLink(monitor));
 
         var content = new StackPanel();
         content.Children.Add(header);
@@ -661,6 +697,7 @@ public partial class PanelWindow : Window
 
     private UIElement BuildMonitorCard(MonitorInfo monitor, bool showSetPrimaryHint)
     {
+        var numberedName = MonitorDisplayHelper.GetNumberedName(monitor, _settings.Current);
         var card = new Button
         {
             Style = (Style)FindResource("MonitorCard"),
@@ -668,8 +705,8 @@ public partial class PanelWindow : Window
             Margin = new Thickness(0, 0, 0, 8),
             IsEnabled = !monitor.IsPrimary && !_swapInProgress,
             ToolTip = monitor.IsPrimary
-                ? $"{monitor.NumberedName} is the primary display"
-                : $"Make {monitor.NumberedName} the primary display",
+                ? $"{numberedName} is the primary display"
+                : $"Make {numberedName} the primary display",
         };
 
         if (monitor.IsPrimary)
@@ -712,7 +749,7 @@ public partial class PanelWindow : Window
         };
         textStack.Children.Add(new TextBlock
         {
-            Text = monitor.NumberedName,
+            Text = numberedName,
             FontFamily = (FontFamily)FindResource("UiFont"),
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
@@ -727,6 +764,7 @@ public partial class PanelWindow : Window
             Foreground = (Brush)FindResource("TextMutedBrush"),
             Margin = new Thickness(0, 2, 0, 0),
         });
+        textStack.Children.Add(CreateRenameLink(monitor));
 
         if (showSetPrimaryHint && !monitor.IsPrimary)
         {
@@ -770,8 +808,8 @@ public partial class PanelWindow : Window
         if (!monitor.IsPrimary)
         {
             var index = monitor.Index;
-            var name = monitor.Name;
-            card.Click += async (_, _) => await SetPrimaryAsync(index, name);
+            var displayName = MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current);
+            card.Click += async (_, _) => await SetPrimaryAsync(index, displayName);
         }
 
         return card;
@@ -840,7 +878,7 @@ public partial class PanelWindow : Window
             var newPrimary = await Task.Run(() => _displayManager.SwapPrimaryBetweenTwoMonitors());
 
             RefreshMonitors();
-            ShowStatus($"Swapped — {newPrimary.Name} is now primary.", success: true);
+            ShowStatus($"Swapped — {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.", success: true);
         }
         catch (Exception ex)
         {
@@ -868,7 +906,7 @@ public partial class PanelWindow : Window
             var newPrimary = await Task.Run(() => _displayManager.SetPrimaryMonitor(monitorIndex));
 
             RefreshMonitors();
-            ShowStatus($"Primary set to {newPrimary.Name}.", success: true);
+            ShowStatus($"Primary set to {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)}.", success: true);
         }
         catch (Exception ex)
         {
@@ -1040,15 +1078,20 @@ public partial class PanelWindow : Window
 
         if (profiles.Count == 0)
         {
-            ProfilesSummaryText.Text = "Switch primary when a game or app starts";
+            ProfilesSummaryText.Text = "Switch primary when a game or app starts — launcher profiles supported";
             ProfilesManageHint.Text = "Add ›";
-            ProfilesCard.ToolTip = "Add an auto-swap profile in Settings";
+            ProfilesCard.ToolTip = "Add an auto-swap profile in Settings (pick a game exe or launcher like Steam)";
             return;
         }
 
+        var first = profiles[0];
+        var preview = profiles.Count == 1
+            ? first.DisplayLabel
+            : $"{first.DisplayLabel} + {profiles.Count - 1} more";
+
         ProfilesSummaryText.Text = enabled == profiles.Count
-            ? $"{enabled} profile{(enabled == 1 ? "" : "s")} active"
-            : $"{enabled} of {profiles.Count} active";
+            ? $"{enabled} active — {preview}"
+            : $"{enabled} of {profiles.Count} active — {preview}";
         ProfilesManageHint.Text = "Manage ›";
         ProfilesCard.ToolTip = "Open Settings to manage auto-swap profiles";
     }

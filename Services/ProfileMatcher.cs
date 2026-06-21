@@ -53,13 +53,51 @@ public static class ProfileMatcher
             return false;
         }
 
-        var running = runningProcessName.Trim();
-        if (running.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        var running = NormalizeProcessName(runningProcessName);
+        if (string.IsNullOrEmpty(running))
         {
-            running = running[..^4];
+            return false;
         }
 
-        return !string.IsNullOrEmpty(profile.NormalizedProcessName) &&
-               string.Equals(running, profile.NormalizedProcessName, StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(profile.NormalizedProcessName) &&
+            string.Equals(running, profile.NormalizedProcessName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return profile.HasResolvedTarget &&
+               string.Equals(running, profile.NormalizedResolvedTarget, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when any configured trigger process for the profile is running.
+    /// Launcher profiles match the launcher and/or the resolved game exe.
+    /// </summary>
+    public static bool IsProfileActive(AppProfile profile, ISet<string> runningProcessNames)
+    {
+        if (profile is null || runningProcessNames is null || runningProcessNames.Count == 0)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(profile.NormalizedProcessName) &&
+            runningProcessNames.Contains(profile.NormalizedProcessName))
+        {
+            return true;
+        }
+
+        return profile.HasResolvedTarget &&
+               runningProcessNames.Contains(profile.NormalizedResolvedTarget);
+    }
+
+    private static string NormalizeProcessName(string name)
+    {
+        var trimmed = name.Trim();
+        if (trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            trimmed = trimmed[..^4];
+        }
+
+        return trimmed.ToLowerInvariant();
     }
 }
