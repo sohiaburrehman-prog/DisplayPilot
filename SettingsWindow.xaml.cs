@@ -4,6 +4,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
+using Microsoft.Win32;
+
 using PrimaryDisplaySwap.Models;
 using PrimaryDisplaySwap.Services;
 
@@ -12,6 +14,9 @@ using Button = System.Windows.Controls.Button;
 using CheckBox = System.Windows.Controls.CheckBox;
 using FontFamily = System.Windows.Media.FontFamily;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MessageBox = System.Windows.MessageBox;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace PrimaryDisplaySwap;
 
@@ -27,15 +32,17 @@ public partial class SettingsWindow : Window
 
     private readonly DisplayManager _displayManager;
     private readonly SettingsService _settings;
+    private readonly Action? _runWizard;
 
     private CaptureTarget _capturing = CaptureTarget.None;
     private string? _editingProfileId;
     private bool _suppressToggleEvents;
 
-    public SettingsWindow(DisplayManager displayManager, SettingsService settings)
+    public SettingsWindow(DisplayManager displayManager, SettingsService settings, Action? runWizard = null)
     {
         _displayManager = displayManager;
         _settings = settings;
+        _runWizard = runWizard;
 
         InitializeComponent();
 
@@ -47,7 +54,7 @@ public partial class SettingsWindow : Window
         RebuildProfileList();
     }
 
-    private void LoadFromSettings()
+    public void LoadFromSettings()
     {
         _suppressToggleEvents = true;
 
@@ -239,6 +246,7 @@ public partial class SettingsWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         info.Children.Add(new TextBlock
@@ -296,6 +304,19 @@ public partial class SettingsWindow : Window
         Grid.SetColumn(enabledToggle, 1);
         grid.Children.Add(enabledToggle);
 
+        var testButton = new Button
+        {
+            Style = (Style)FindResource("MiniButton"),
+            Content = "Test",
+            Width = 58,
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Check if this profile would match right now",
+        };
+        testButton.Click += (_, _) => TestProfile(id);
+        Grid.SetColumn(testButton, 2);
+        grid.Children.Add(testButton);
+
         var editButton = new Button
         {
             Style = (Style)FindResource("MiniButton"),
@@ -304,7 +325,7 @@ public partial class SettingsWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
         editButton.Click += (_, _) => BeginEditProfile(id);
-        Grid.SetColumn(editButton, 2);
+        Grid.SetColumn(editButton, 3);
         grid.Children.Add(editButton);
 
         var removeButton = new Button
@@ -316,7 +337,7 @@ public partial class SettingsWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
         removeButton.Click += (_, _) => RemoveProfile(id);
-        Grid.SetColumn(removeButton, 3);
+        Grid.SetColumn(removeButton, 4);
         grid.Children.Add(removeButton);
 
         border.Child = grid;
@@ -569,6 +590,231 @@ public partial class SettingsWindow : Window
     {
         ProfileEditor.Visibility = Visibility.Collapsed;
         _editingProfileId = null;
+    }
+
+    private void TestEditingProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var processName = ProcessNameBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(processName))
+        {
+            SetStatus("Enter a process name to test.");
+            return;
+        }
+
+        if (TargetMonitorCombo.SelectedItem is not MonitorComboItem monitorItem)
+        {
+            SetStatus("Pick a target monitor to test.");
+            return;
+        }
+
+        var draft = new AppProfile
+        {
+            Id = _editingProfileId ?? "draft",
+            ProcessName = processName,
+            ResolvedTargetProcessName = LauncherCatalog.IsKnownLauncher(processName)
+                ? ResolvedTargetBox.Text.Trim()
+                : string.Empty,
+            TargetMonitorName = monitorItem.Monitor.Name,
+            TargetMonitorDeviceName = monitorItem.Monitor.DeviceName,
+            RestoreOnExit = RestoreOnExitCheck.IsChecked == true,
+            Enabled = true,
+        };
+
+        TestProfileDraft(draft);
+    }
+
+    private void TestProfile(string id)
+    {
+        var profile = _settings.Current.Profiles.FirstOrDefault(p => p.Id == id);
+        if (profile is null)
+        {
+            return;
+        }
+
+        TestProfileDraft(profile);
+    }
+
+    private void TestProfileDraft(AppProfile profile)
+    {
+        try
+        {
+            var running = ProcessWatcherService.GetRunningProcessNames();
+            var monitors = SafeGetMonitors();
+            var evaluation = ProfileMatcher.Evaluate(profile, running, monitors);
+
+            AppLogger.Log($"Profile test [{profile.DisplayLabel}]: {evaluation.Summary}");
+
+            var details = evaluation.Summary;
+            if (evaluation.TargetConnected && evaluation.TargetMonitor is not null)
+            {
+                var label = MonitorDisplayHelper.GetDisplayName(evaluation.TargetMonitor, _settings.Current);
+                details += $"\n\nTarget monitor: {label} ({evaluation.TargetMonitor.DeviceName})";
+            }
+
+            if (evaluation.WouldMatch && evaluation.TargetMonitor is not null)
+            {
+                var apply = MessageBox.Show(
+                    details + "\n\nApply now and set that monitor as primary?",
+                    "Profile test — match",
+                    MessageBoxButton.YesNoCancel,
+                    MessageBoxImage.Question);
+
+                if (apply == MessageBoxResult.Yes)
+                {
+                    _displayManager.SetPrimaryByDeviceName(evaluation.TargetMonitor.DeviceName);
+                    var name = MonitorDisplayHelper.GetDisplayName(evaluation.TargetMonitor, _settings.Current);
+                    AppLogger.Log($"Profile test apply [{profile.DisplayLabel}]: primary set to '{name}'.");
+                    SetStatus($"Applied — {name} is now primary.");
+                    RebuildProfileList();
+                }
+
+                return;
+            }
+
+            MessageBox.Show(
+                details,
+                evaluation.ProcessRunning ? "Profile test — partial match" : "Profile test — no match",
+                MessageBoxButton.OK,
+                evaluation.ProcessRunning ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Profile test failed [{profile.DisplayLabel}]: {ex.Message}");
+            MessageBox.Show(
+                $"Could not test this profile:\n{ex.Message}",
+                "Profile test failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export DisplayPilot settings",
+            Filter = "JSON settings (*.json)|*.json|All files (*.*)|*.*",
+            FileName = $"DisplayPilot-settings-v{AppSettings.CurrentSchemaVersion}.json",
+            DefaultExt = ".json",
+            AddExtension = true,
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var json = _settings.ExportToJson();
+            File.WriteAllText(dialog.FileName, json);
+            AppLogger.Log($"Settings exported to {dialog.FileName}.");
+            SetStatus("Settings exported.");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Settings export failed: {ex.Message}");
+            MessageBox.Show(
+                $"Could not export settings:\n{ex.Message}",
+                "Export failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ImportSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import DisplayPilot settings",
+            Filter = "JSON settings (*.json)|*.json|All files (*.*)|*.*",
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(dialog.FileName);
+            if (!SettingsService.TryParseImport(json, out var imported, out var error))
+            {
+                AppLogger.Log($"Settings import rejected: {error}");
+                MessageBox.Show(
+                    error ?? "The selected file is not valid DisplayPilot settings.",
+                    "Import failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                $"Replace your current settings with the imported file?\n\n" +
+                $"Profiles: {imported!.Profiles.Count}\n" +
+                $"Schema version: {imported.SchemaVersion}\n\n" +
+                "Your current settings.json will be backed up to settings.json.bak first.",
+                "Import settings",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (confirm != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            if (!_settings.BackupCurrentSettings())
+            {
+                var proceed = MessageBox.Show(
+                    "Could not back up the current settings file. Import anyway?",
+                    "Backup failed",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (proceed != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            if (!_settings.ImportReplace(imported))
+            {
+                MessageBox.Show(
+                    "Import could not be applied.",
+                    "Import failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            LoadFromSettings();
+            RebuildProfileList();
+            HideEditor();
+            SetStatus("Settings imported.");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Settings import failed: {ex.Message}");
+            MessageBox.Show(
+                $"Could not import settings:\n{ex.Message}",
+                "Import failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void RunWizard_Click(object sender, RoutedEventArgs e)
+    {
+        if (_runWizard is null)
+        {
+            MessageBox.Show(
+                "Setup wizard is not available from this window.",
+                AppInfo.AppName,
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        _runWizard();
     }
 
     // ─────────────────────── Updates ───────────────────────

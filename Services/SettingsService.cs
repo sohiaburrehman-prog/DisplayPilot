@@ -103,14 +103,25 @@ public sealed class SettingsService
     private void NormalizeLoaded()
     {
         var upgraded = Current.SchemaVersion < AppSettings.CurrentSchemaVersion;
+        NormalizeSettings(Current, migrateLegacyInstall: true);
+        if (upgraded)
+        {
+            Save_NoLock();
+            AppLogger.Log($"Settings migrated to schema v{AppSettings.CurrentSchemaVersion}.");
+        }
+    }
 
-        Current.OpenPanelHotkey ??= new AppSettings().OpenPanelHotkey;
-        Current.CyclePrimaryHotkey ??= new AppSettings().CyclePrimaryHotkey;
-        Current.Profiles ??= new List<AppProfile>();
-        Current.Profiles.RemoveAll(p => p is null);
-        Current.MonitorNicknames ??= new Dictionary<string, string>();
+    private static void NormalizeSettings(AppSettings settings, bool migrateLegacyInstall)
+    {
+        var upgraded = settings.SchemaVersion < AppSettings.CurrentSchemaVersion;
 
-        foreach (var profile in Current.Profiles)
+        settings.OpenPanelHotkey ??= new AppSettings().OpenPanelHotkey;
+        settings.CyclePrimaryHotkey ??= new AppSettings().CyclePrimaryHotkey;
+        settings.Profiles ??= new List<AppProfile>();
+        settings.Profiles.RemoveAll(p => p is null);
+        settings.MonitorNicknames ??= new Dictionary<string, string>();
+
+        foreach (var profile in settings.Profiles)
         {
             if (string.IsNullOrWhiteSpace(profile.Id))
             {
@@ -120,19 +131,114 @@ public sealed class SettingsService
             profile.ResolvedTargetProcessName ??= string.Empty;
         }
 
-        if (Current.ProcessWatchIntervalMs < 1000)
+        if (settings.ProcessWatchIntervalMs < 1000)
         {
-            Current.ProcessWatchIntervalMs = 1000;
+            settings.ProcessWatchIntervalMs = 1000;
         }
 
         if (upgraded)
         {
-            // Existing installs skip the first-run wizard.
-            Current.FirstRunCompleted = true;
-            Current.SchemaVersion = AppSettings.CurrentSchemaVersion;
-            Save_NoLock();
-            AppLogger.Log($"Settings migrated to schema v{AppSettings.CurrentSchemaVersion}.");
+            if (migrateLegacyInstall)
+            {
+                // Existing installs skip the first-run wizard.
+                settings.FirstRunCompleted = true;
+            }
+
+            settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
         }
+    }
+
+    /// <summary>Serializes current settings for export (includes schema version).</summary>
+    public string ExportToJson()
+    {
+        lock (_lock)
+        {
+            var snapshot = Current.Clone();
+            snapshot.SchemaVersion = AppSettings.CurrentSchemaVersion;
+            return JsonSerializer.Serialize(snapshot, JsonOptions);
+        }
+    }
+
+    /// <summary>Parses and normalizes settings JSON without applying it.</summary>
+    public static bool TryParseImport(string json, out AppSettings? settings, out string? error)
+    {
+        settings = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            error = "The file is empty.";
+            return false;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+            if (parsed is null)
+            {
+                error = "The file does not contain valid settings.";
+                return false;
+            }
+
+            NormalizeSettings(parsed, migrateLegacyInstall: false);
+            settings = parsed;
+            return true;
+        }
+        catch (JsonException ex)
+        {
+            error = $"Invalid JSON: {ex.Message}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>Backs up the live settings file to settings.json.bak.</summary>
+    public bool BackupCurrentSettings()
+    {
+        lock (_lock)
+        {
+            try
+            {
+                if (!File.Exists(SettingsPath))
+                {
+                    return true;
+                }
+
+                var backup = SettingsPath + ".bak";
+                File.Copy(SettingsPath, backup, overwrite: true);
+                AppLogger.Log($"Settings backed up to {backup}.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"Settings backup failed: {ex.Message}");
+                return false;
+            }
+        }
+    }
+
+    /// <summary>Replaces live settings with imported data (caller should back up first).</summary>
+    public bool ImportReplace(AppSettings imported)
+    {
+        if (imported is null)
+        {
+            return false;
+        }
+
+        lock (_lock)
+        {
+            Current = imported.Clone();
+            NormalizeSettings(Current, migrateLegacyInstall: false);
+            Save_NoLock();
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        AppLogger.Log($"Settings imported ({Current.Profiles.Count} profile(s)).");
+        return true;
     }
 
     private static void BackupCorruptFile()

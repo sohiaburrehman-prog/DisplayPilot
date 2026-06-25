@@ -208,11 +208,45 @@
                                   Margin="0,0,0,14" />
 
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Test profile" Style="{StaticResource MiniButton}"
+                                    Width="100" Margin="0,0,8,0" Click="TestEditingProfile_Click" />
                             <Button Content="Cancel" Style="{StaticResource MiniButton}"
                                     Width="92" Click="CancelProfile_Click" />
                             <Button x:Name="SaveProfileButton" Content="Save" Style="{StaticResource AccentMiniButton}"
                                     Width="92" Margin="8,0,0,0" Click="SaveProfile_Click" />
                         </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ═══════ Backup & restore ═══════ -->
+                <TextBlock Text="BACKUP &amp; RESTORE"
+                           FontSize="11" FontWeight="Bold"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Margin="2,20,0,8" />
+
+                <Border Background="{StaticResource MapSurfaceBrush}"
+                        BorderBrush="{StaticResource HairlineBrush}"
+                        BorderThickness="1" CornerRadius="10"
+                        Padding="14,12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="Export or import your settings file (hotkeys, profiles, nicknames). Import replaces all settings after confirmation; a backup of the current file is saved first."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Margin="0,0,0,12" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="ExportSettingsButton" Content="Export settings"
+                                    Style="{StaticResource MiniButton}" Width="130"
+                                    Click="ExportSettings_Click" />
+                            <Button x:Name="ImportSettingsButton" Content="Import settings"
+                                    Style="{StaticResource MiniButton}" Width="130"
+                                    Margin="8,0,0,0"
+                                    Click="ImportSettings_Click" />
+                        </StackPanel>
+                        <Button x:Name="RunWizardButton" Content="Run setup wizard again"
+                                Style="{StaticResource MiniButton}"
+                                HorizontalAlignment="Left"
+                                Margin="0,12,0,0"
+                                Click="RunWizard_Click" />
                     </StackPanel>
                 </Border>
 

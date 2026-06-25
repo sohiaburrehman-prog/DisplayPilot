@@ -77,6 +77,11 @@ public partial class App : System.Windows.Application
             _panel?.RefreshMonitors();
             _tray?.RefreshMenu();
         });
+        _processWatcher.StatusMessage += (_, message) => Dispatcher.BeginInvoke(() =>
+        {
+            _panel?.ShowExternalStatus(message, success: true);
+            _tray?.ShowBriefMessage(message);
+        });
         _processWatcher.Start();
 
         _settings.Changed += OnSettingsChanged;
@@ -100,7 +105,7 @@ public partial class App : System.Windows.Application
 
         if (!_settings.Current.FirstRunCompleted)
         {
-            ShowFirstRunWizard();
+            ShowWizard(isFirstRun: true);
             return;
         }
 
@@ -110,12 +115,13 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private void ShowFirstRunWizard()
+    /// <summary>Shows the setup wizard (first run or re-run from Settings).</summary>
+    public void ShowWizard(bool isFirstRun = false)
     {
-        var wizard = new WizardWindow(_displayManager, _settings, _startupService);
+        var wizard = new WizardWindow(_displayManager, _settings, _startupService, isRerun: !isFirstRun);
         var completed = wizard.ShowDialog() == true;
 
-        if (!completed)
+        if (isFirstRun && !completed)
         {
             _settings.Update(s => s.FirstRunCompleted = true);
         }
@@ -267,11 +273,28 @@ public partial class App : System.Windows.Application
         _panel.ShowNearTray();
     }
 
+    private void RunSetupWizard()
+    {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Hide();
+        }
+
+        ShowWizard(isFirstRun: false);
+
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Show();
+            _settingsWindow.LoadFromSettings();
+            _settingsWindow.RefreshMonitors();
+        }
+    }
+
     private void ShowSettings(bool focusProfiles = false, bool beginAddProfile = false)
     {
         if (_settingsWindow is null)
         {
-            _settingsWindow = new SettingsWindow(_displayManager, _settings);
+            _settingsWindow = new SettingsWindow(_displayManager, _settings, RunSetupWizard);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();
             if (focusProfiles)

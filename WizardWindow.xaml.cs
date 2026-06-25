@@ -44,11 +44,14 @@ public partial class WizardWindow : Window
 
     public FinishAction SelectedFinishAction { get; private set; } = FinishAction.OpenPanel;
 
-    public WizardWindow(DisplayManager displayManager, SettingsService settings, StartupService startupService)
+    private readonly bool _isRerun;
+
+    public WizardWindow(DisplayManager displayManager, SettingsService settings, StartupService startupService, bool isRerun = false)
     {
         _displayManager = displayManager;
         _settings = settings;
         _startupService = startupService;
+        _isRerun = isRerun;
 
         InitializeComponent();
 
@@ -170,6 +173,19 @@ public partial class WizardWindow : Window
 
     private void BuildWelcomeStep()
     {
+        if (_isRerun)
+        {
+            var profileCount = _settings.Current.Profiles.Count;
+            var hotkey = HotkeyService.Describe(_settings.Current.OpenPanelHotkey);
+            AddBody(
+                "Run through setup again without losing your saved profiles unless you change them here.\n\n" +
+                $"• Current open-panel hotkey: {hotkey}\n" +
+                $"• Auto-swap profiles: {profileCount}\n" +
+                $"• Start with Windows: {(_startupService.IsEnabled ? "on" : "off")}\n\n" +
+                "You can adjust primary display, hotkey, startup, or add another profile — then finish to return to Settings.");
+            return;
+        }
+
         AddBody(
             "DisplayPilot lives in your system tray and lets you change which monitor Windows uses as the primary display.\n\n" +
             "• Click a monitor card or use the tray menu to set primary\n" +
@@ -241,9 +257,12 @@ public partial class WizardWindow : Window
 
     private void BuildProfileStep()
     {
+        var existing = _settings.Current.Profiles.Count;
         AddBody(
-            "When the chosen app starts, DisplayPilot can move the primary display to a monitor you pick. " +
-            "You can also pick a launcher (Steam, Epic, etc.) and optionally set the game exe for reliable matching.");
+            existing > 0
+                ? $"You have {existing} saved profile{(existing == 1 ? "" : "s")}. Add another below or skip to keep them unchanged."
+                : "When the chosen app starts, DisplayPilot can move the primary display to a monitor you pick. " +
+                  "You can also pick a launcher (Steam, Epic, etc.) and optionally set the game exe for reliable matching.");
 
         StepHost.Children.Add(new TextBlock
         {
@@ -608,7 +627,11 @@ public partial class WizardWindow : Window
 
     private void CompleteWizard()
     {
-        _settings.Update(s => s.FirstRunCompleted = true);
+        if (!_isRerun)
+        {
+            _settings.Update(s => s.FirstRunCompleted = true);
+        }
+
         DialogResult = true;
         Close();
     }

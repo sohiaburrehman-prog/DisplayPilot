@@ -480,6 +480,9 @@ internal sealed class TrayService : IDisposable
         }
     }
 
+    /// <summary>Shows a throttled tray balloon (e.g. profile apply feedback).</summary>
+    public void ShowBriefMessage(string message) => ShowFeedback(message);
+
     private void ShowFeedback(string message)
     {
         if ((DateTime.UtcNow - _lastBalloonUtc).TotalSeconds < 4)

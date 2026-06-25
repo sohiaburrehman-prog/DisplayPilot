@@ -262,6 +262,39 @@ Check(restored.CyclePrimaryHotkey.Enabled && restored.CyclePrimaryHotkey.Key == 
     "Cycle hotkey survives JSON round-trip");
 Check(restored.AutoUpdateCheckEnabled == false, "Auto-update flag survives JSON round-trip");
 
+// ─────────────────── Settings export / import ───────────────────
+Console.WriteLine("\n== Settings export / import ==");
+
+var exportJson = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+Check(exportJson.Contains("\"SchemaVersion\""), "Exported JSON includes schema version");
+Check(SettingsService.TryParseImport(exportJson, out var importParsed, out var importErr) && importParsed is not null,
+    $"SettingsService.TryParseImport accepts valid JSON (err={importErr ?? "none"})");
+Check(importParsed!.Profiles.Count == 2, "Import parse preserves profile count");
+Check(importParsed.FirstRunCompleted, "Import parse preserves FirstRunCompleted");
+
+Check(!SettingsService.TryParseImport("{ not json", out _, out var badErr) && badErr is not null,
+  "TryParseImport rejects corrupt JSON");
+
+// ─────────────────── Profile evaluation (test simulation) ───────────────────
+Console.WriteLine("\n== Profile evaluation (test simulation) ==");
+
+var runningGame = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "game" };
+var evalMatch = ProfileMatcher.Evaluate(gameProfile, runningGame, dual);
+Check(evalMatch.ProcessRunning && evalMatch.WouldMatch,
+    "Evaluate: running process on connected target would match");
+Check(evalMatch.Summary.Contains("Match", StringComparison.OrdinalIgnoreCase),
+    "Evaluate summary mentions match");
+
+var evalNoProcess = ProfileMatcher.Evaluate(gameProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase), dual);
+Check(!evalNoProcess.ProcessRunning && !evalNoProcess.WouldMatch,
+    "Evaluate: no running process => no match");
+Check(evalNoProcess.Summary.Contains("No match", StringComparison.OrdinalIgnoreCase),
+    "Evaluate summary mentions no match");
+
+var evalMissingMonitor = ProfileMatcher.Evaluate(gameProfile, runningGame, single);
+Check(evalMissingMonitor.ProcessRunning && !evalMissingMonitor.WouldMatch && !evalMissingMonitor.TargetConnected,
+    "Evaluate: process running but monitor missing => partial, no apply");
+
 // Corrupt JSON tolerance.
 AppSettings? corrupt = null;
 try { corrupt = JsonSerializer.Deserialize<AppSettings>("{ this is not valid json "); }

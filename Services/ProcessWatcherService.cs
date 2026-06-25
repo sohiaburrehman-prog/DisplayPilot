@@ -29,6 +29,9 @@ public sealed class ProcessWatcherService : IDisposable
 
     public event EventHandler? PrimaryChanged;
 
+    /// <summary>Brief user-facing status (tray/panel); throttled by subscribers.</summary>
+    public event EventHandler<string>? StatusMessage;
+
     public ProcessWatcherService(SettingsService settings, DisplayManager displayManager)
     {
         _settings = settings;
@@ -143,17 +146,20 @@ public sealed class ProcessWatcherService : IDisposable
     {
         try
         {
+            var label = profile.DisplayLabel;
             var monitors = _displayManager.GetMonitors();
             var target = ProfileMatcher.ResolveTarget(profile, monitors);
             if (target is null)
             {
-                AppLogger.Log($"Profile '{profile.ProcessName}': target display '{profile.TargetMonitorName}' not connected; skipping.");
+                AppLogger.Log(
+                    $"Profile activate skipped [{label}]: target '{profile.TargetMonitorName}' " +
+                    $"(device {profile.TargetMonitorDeviceName}) not among {monitors.Count} connected display(s).");
                 return;
             }
 
             if (target.IsPrimary)
             {
-                AppLogger.Log($"Profile '{profile.ProcessName}': '{target.Name}' is already primary.");
+                AppLogger.Log($"Profile skip [{label}]: '{target.Name}' ({target.DeviceName}) is already primary.");
                 return;
             }
 
@@ -161,15 +167,25 @@ public sealed class ProcessWatcherService : IDisposable
             if (currentPrimary is not null)
             {
                 _previousPrimary[profile.Id] = currentPrimary.DeviceName;
+                AppLogger.Log(
+                    $"Profile activate [{label}]: process started; saving previous primary " +
+                    $"'{currentPrimary.Name}' ({currentPrimary.DeviceName}).");
+            }
+            else
+            {
+                AppLogger.Log($"Profile activate [{label}]: process started; no previous primary recorded.");
             }
 
             _displayManager.SetPrimaryByDeviceName(target.DeviceName);
-            AppLogger.Log($"Profile '{profile.ProcessName}': set primary to '{target.Name}'.");
+            var displayName = MonitorDisplayHelper.GetDisplayName(target, _settings.Current);
+            AppLogger.Log(
+                $"Profile activated [{label}]: primary set to '{displayName}' ({target.DeviceName}).");
+            StatusMessage?.Invoke(this, $"Auto-swap: {displayName} is now primary.");
             PrimaryChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {
-            AppLogger.LogException($"ProcessWatcher start '{profile.ProcessName}'", ex);
+            AppLogger.LogException($"ProcessWatcher start '{profile.DisplayLabel}'", ex);
         }
     }
 
@@ -177,15 +193,18 @@ public sealed class ProcessWatcherService : IDisposable
     {
         try
         {
+            var label = profile.DisplayLabel;
             if (!profile.RestoreOnExit)
             {
                 _previousPrimary.Remove(profile.Id);
+                AppLogger.Log($"Profile exit [{label}]: restore-on-exit disabled; leaving primary unchanged.");
                 return;
             }
 
             if (!_previousPrimary.TryGetValue(profile.Id, out var previousDevice) ||
                 string.IsNullOrWhiteSpace(previousDevice))
             {
+                AppLogger.Log($"Profile exit [{label}]: no saved previous primary to restore.");
                 return;
             }
 
@@ -197,26 +216,32 @@ public sealed class ProcessWatcherService : IDisposable
 
             if (previous is null)
             {
-                AppLogger.Log($"Profile '{profile.ProcessName}': previous primary no longer connected; skipping restore.");
+                AppLogger.Log(
+                    $"Profile restore skipped [{label}]: previous primary device '{previousDevice}' " +
+                    $"not among {monitors.Count} connected display(s).");
                 return;
             }
 
             if (previous.IsPrimary)
             {
+                AppLogger.Log($"Profile restore skip [{label}]: '{previous.Name}' is already primary.");
                 return;
             }
 
             _displayManager.SetPrimaryByDeviceName(previous.DeviceName);
-            AppLogger.Log($"Profile '{profile.ProcessName}': restored primary to '{previous.Name}'.");
+            var displayName = MonitorDisplayHelper.GetDisplayName(previous, _settings.Current);
+            AppLogger.Log(
+                $"Profile restored [{label}]: primary returned to '{displayName}' ({previous.DeviceName}).");
+            StatusMessage?.Invoke(this, $"Auto-swap: restored {displayName} as primary.");
             PrimaryChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {
-            AppLogger.LogException($"ProcessWatcher exit '{profile.ProcessName}'", ex);
+            AppLogger.LogException($"ProcessWatcher exit '{profile.DisplayLabel}'", ex);
         }
     }
 
-    private static HashSet<string> GetRunningProcessNames()
+    public static HashSet<string> GetRunningProcessNames()
     {
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var process in Process.GetProcesses())

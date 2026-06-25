@@ -10,6 +10,79 @@ namespace PrimaryDisplaySwap.Services;
 /// </summary>
 public static class ProfileMatcher
 {
+    /// <summary>Result of evaluating whether a profile would match right now.</summary>
+    public sealed class ProfileEvaluation
+    {
+        public bool ProfileEnabled { get; init; }
+        public bool ProcessRunning { get; init; }
+        public bool WouldMatch { get; init; }
+        public MonitorInfo? TargetMonitor { get; init; }
+        public bool TargetConnected { get; init; }
+        public bool TargetIsPrimary { get; init; }
+        public string Summary { get; init; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Simulates whether a profile would activate now: process running check plus
+    /// target monitor resolution on the connected set.
+    /// </summary>
+    public static ProfileEvaluation Evaluate(
+        AppProfile profile,
+        ISet<string> runningProcessNames,
+        IReadOnlyList<MonitorInfo> connectedMonitors)
+    {
+        if (profile is null)
+        {
+            return new ProfileEvaluation { Summary = "Profile is missing." };
+        }
+
+        if (!profile.Enabled)
+        {
+            return new ProfileEvaluation
+            {
+                ProfileEnabled = false,
+                Summary = $"Profile '{profile.DisplayLabel}' is disabled.",
+            };
+        }
+
+        var processRunning = IsProfileActive(profile, runningProcessNames);
+        var target = ResolveTarget(profile, connectedMonitors);
+        var connected = target is not null;
+        var isPrimary = target?.IsPrimary == true;
+
+        string summary;
+        if (!processRunning)
+        {
+            var watch = profile.HasResolvedTarget
+                ? $"{profile.NormalizedProcessName} or {profile.NormalizedResolvedTarget}"
+                : profile.NormalizedProcessName;
+            summary = $"No match — neither '{watch}' is running.";
+        }
+        else if (!connected)
+        {
+            summary = $"Process is running, but target display '{profile.TargetMonitorName}' is not connected.";
+        }
+        else if (isPrimary)
+        {
+            summary = $"Match — '{profile.DisplayLabel}' is running and '{target!.Name}' is already primary.";
+        }
+        else
+        {
+            summary = $"Match — '{profile.DisplayLabel}' is running; would set primary to '{target!.Name}'.";
+        }
+
+        return new ProfileEvaluation
+        {
+            ProfileEnabled = true,
+            ProcessRunning = processRunning,
+            WouldMatch = processRunning && connected && !isPrimary,
+            TargetMonitor = target,
+            TargetConnected = connected,
+            TargetIsPrimary = isPrimary,
+            Summary = summary,
+        };
+    }
+
     /// <summary>
     /// Resolves the target monitor for a profile, or null when the configured
     /// display is not currently connected. Matches on friendly name first
