@@ -1,0 +1,60 @@
+using PrimaryDisplaySwap.Models;
+
+namespace PrimaryDisplaySwap.Services;
+
+/// <summary>Shared logic for manually or automatically applying an auto-swap profile.</summary>
+public static class ProfileApplyService
+{
+    public sealed class ApplyResult
+    {
+        public bool Applied { get; init; }
+        public bool SkippedAlreadyPrimary { get; init; }
+        public bool SkippedMissingMonitor { get; init; }
+        public MonitorInfo? TargetMonitor { get; init; }
+        public string Message { get; init; } = string.Empty;
+    }
+
+    public static ApplyResult TryApply(
+        AppProfile profile,
+        AppSettings settings,
+        DisplayManager displayManager)
+    {
+        if (profile is null || !profile.Enabled)
+        {
+            return new ApplyResult { Message = "Profile is disabled or missing." };
+        }
+
+        var monitors = displayManager.GetMonitors();
+        var target = ProfileMatcher.ResolveTarget(profile, monitors);
+        if (target is null)
+        {
+            var msg =
+                $"Target '{profile.TargetMonitorName}' is not connected ({monitors.Count} display(s)).";
+            AppLogger.Log($"Profile apply skipped [{profile.DisplayLabel}]: {msg}");
+            return new ApplyResult { SkippedMissingMonitor = true, Message = msg };
+        }
+
+        if (target.IsPrimary)
+        {
+            var label = MonitorDisplayHelper.GetDisplayName(target, settings);
+            AppLogger.Log($"Profile apply skip [{profile.DisplayLabel}]: '{label}' is already primary.");
+            return new ApplyResult
+            {
+                SkippedAlreadyPrimary = true,
+                TargetMonitor = target,
+                Message = $"{label} is already primary.",
+            };
+        }
+
+        displayManager.SetPrimaryByDeviceName(target.DeviceName);
+        var displayName = MonitorDisplayHelper.GetDisplayName(target, settings);
+        AppLogger.Log(
+            $"Profile applied [{profile.DisplayLabel}]: primary set to '{displayName}' ({target.DeviceName}).");
+        return new ApplyResult
+        {
+            Applied = true,
+            TargetMonitor = target,
+            Message = $"{displayName} is now primary.",
+        };
+    }
+}

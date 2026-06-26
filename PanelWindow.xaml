@@ -106,14 +106,26 @@
                                        FontFamily="{StaticResource UiFont}"
                                        FontSize="12.5" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}" />
-                            <TextBlock FontFamily="{StaticResource UiFont}"
-                                       FontSize="11"
-                                       Margin="0,3,0,0">
-                                <Hyperlink x:Name="UpdateBannerLink"
-                                           Click="UpdateBannerLink_Click"
-                                           Foreground="{StaticResource AccentHoverBrush}"
-                                           TextDecorations="{x:Null}">View release on GitHub</Hyperlink>
-                            </TextBlock>
+                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                <TextBlock FontFamily="{StaticResource UiFont}"
+                                           FontSize="11">
+                                    <Hyperlink x:Name="UpdateBannerLink"
+                                               Click="UpdateBannerLink_Click"
+                                               Foreground="{StaticResource AccentHoverBrush}"
+                                               TextDecorations="{x:Null}">Download release</Hyperlink>
+                                </TextBlock>
+                                <TextBlock Text=" · "
+                                           FontFamily="{StaticResource UiFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TextMutedBrush}" />
+                                <TextBlock FontFamily="{StaticResource UiFont}"
+                                           FontSize="11">
+                                    <Hyperlink x:Name="UpdateWhatsNewLink"
+                                               Click="UpdateWhatsNewLink_Click"
+                                               Foreground="{StaticResource AccentHoverBrush}"
+                                               TextDecorations="{x:Null}">What's new</Hyperlink>
+                                </TextBlock>
+                            </StackPanel>
                         </StackPanel>
                         <Button Grid.Column="1"
                                 Style="{StaticResource CaptionButton}"
@@ -121,6 +133,44 @@
                                 VerticalAlignment="Top"
                                 ToolTip="Dismiss"
                                 Click="UpdateBannerDismiss_Click" />
+                    </Grid>
+                </Border>
+
+                <!-- What's new — shown after upgrading to a new version. -->
+                <Border x:Name="WhatsNewBanner"
+                        Visibility="Collapsed"
+                        Background="#332ECC71"
+                        BorderBrush="#44A855F7"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="12,10"
+                        Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="WhatsNewBannerTitle"
+                                       Text="What's new"
+                                       FontFamily="{StaticResource UiFont}"
+                                       FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock FontFamily="{StaticResource UiFont}"
+                                       FontSize="11"
+                                       Margin="0,3,0,0">
+                                <Hyperlink x:Name="WhatsNewBannerLink"
+                                           Click="WhatsNewBannerLink_Click"
+                                           Foreground="{StaticResource AccentHoverBrush}"
+                                           TextDecorations="{x:Null}">View release notes</Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Style="{StaticResource CaptionButton}"
+                                Content="&#xE711;"
+                                VerticalAlignment="Top"
+                                ToolTip="Dismiss"
+                                Click="WhatsNewBannerDismiss_Click" />
                     </Grid>
                 </Border>
 

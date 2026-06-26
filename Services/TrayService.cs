@@ -29,6 +29,7 @@ internal sealed class TrayService : IDisposable
     public event EventHandler? ProfilesRequested;
     public event EventHandler? ViewLogRequested;
     public event EventHandler? CyclePrimaryRequested;
+    public event EventHandler? ProfileApplied;
 
     public TrayService(DisplayManager displayManager, StartupService startupService, SettingsService settings)
     {
@@ -95,9 +96,10 @@ internal sealed class TrayService : IDisposable
         openItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(openItem);
 
+        IReadOnlyList<MonitorInfo> monitors = Array.Empty<MonitorInfo>();
         try
         {
-            var monitors = _displayManager.GetMonitors();
+            monitors = _displayManager.GetMonitors();
             UpdateTrayTooltip(monitors);
 
             if (monitors.Count > 0)
@@ -123,12 +125,6 @@ internal sealed class TrayService : IDisposable
             }
             else
             {
-                if (monitors.Count == 2)
-                {
-                    AddSwapAction(monitors);
-                    _menu.Items.Add(new ToolStripSeparator());
-                }
-
                 foreach (var monitor in monitors)
                 {
                     AddMonitorItem(monitor, monitors.Count > 2);
@@ -142,13 +138,11 @@ internal sealed class TrayService : IDisposable
             _menu.Items.Add(CreateDisabled($"Error: {ex.Message}"));
         }
 
+        AddQuickActionsSection(monitors);
+
         AddProfilesSection();
 
         _menu.Items.Add(new ToolStripSeparator());
-
-        var cyclePrimaryItem = new ToolStripMenuItem("Cycle &primary display");
-        cyclePrimaryItem.Click += (_, _) => CyclePrimaryRequested?.Invoke(this, EventArgs.Empty);
-        _menu.Items.Add(cyclePrimaryItem);
 
         var settingsItem = new ToolStripMenuItem("&Settings…");
         settingsItem.Click += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
@@ -178,6 +172,84 @@ internal sealed class TrayService : IDisposable
         var exitItem = new ToolStripMenuItem("E&xit DisplayPilot");
         exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(exitItem);
+    }
+
+    private void AddQuickActionsSection(IReadOnlyList<MonitorInfo> monitors)
+    {
+        _menu.Items.Add(new ToolStripSeparator());
+        _menu.Items.Add(CreateLabel("QUICK ACTIONS", TrayMenuTags.Section));
+
+        if (monitors.Count == 0)
+        {
+            _menu.Items.Add(CreateDisabled("Connect a display first"));
+        }
+        else if (monitors.Count == 1)
+        {
+            _menu.Items.Add(CreateDisabled("Connect another display to swap"));
+        }
+        else if (monitors.Count == 2)
+        {
+            AddSwapAction(monitors);
+        }
+
+        if (monitors.Count >= 2)
+        {
+            var cyclePrimaryItem = new ToolStripMenuItem("Cycle &primary display");
+            cyclePrimaryItem.Click += (_, _) => CyclePrimaryRequested?.Invoke(this, EventArgs.Empty);
+            _menu.Items.Add(cyclePrimaryItem);
+        }
+
+        var enabledProfiles = _settings.Current.Profiles.Where(p => p.Enabled).ToList();
+        if (enabledProfiles.Count == 0)
+        {
+            _menu.Items.Add(CreateDisabled("No enabled profiles"));
+            return;
+        }
+
+        var applyMenu = new ToolStripMenuItem("Apply &profile");
+        foreach (var profile in enabledProfiles)
+        {
+            var captured = profile;
+            var item = new ToolStripMenuItem(captured.DisplayLabel);
+            item.Click += (_, _) => ApplyProfile(captured);
+            applyMenu.DropDownItems.Add(item);
+        }
+
+        _menu.Items.Add(applyMenu);
+    }
+
+    private void ApplyProfile(AppProfile profile)
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var result = ProfileApplyService.TryApply(profile, _settings.Current, _displayManager);
+                if (result.Applied)
+                {
+                    ShowFeedback($"Profile applied — {result.Message}");
+                    ProfileApplied?.Invoke(this, EventArgs.Empty);
+                }
+                else if (result.SkippedAlreadyPrimary)
+                {
+                    ShowFeedback(result.Message);
+                }
+                else
+                {
+                    System.Windows.Forms.MessageBox.Show(
+                        result.Message,
+                        "Could not apply profile",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"Tray ApplyProfile failed: {ex.Message}");
+                System.Windows.Forms.MessageBox.Show(ex.Message, "Could not apply profile",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        });
     }
 
     private void AddProfilesSection()

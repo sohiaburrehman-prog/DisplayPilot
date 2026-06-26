@@ -33,6 +33,7 @@ public partial class PanelWindow : Window
 
     private string _updateReleaseUrl = string.Empty;
     private string _updateTag = string.Empty;
+    private string _whatsNewVersion = string.Empty;
     // DWM attributes for the native Windows 11 flyout look.
     private const int DwmwaUseImmersiveDarkMode = 20;
     private const int DwmwaWindowCornerPreference = 33;
@@ -1050,9 +1051,27 @@ public partial class PanelWindow : Window
         UpdateBanner.Visibility = Visibility.Visible;
     }
 
+    public void ShowWhatsNewBanner(string version)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => ShowWhatsNewBanner(version));
+            return;
+        }
+
+        _whatsNewVersion = version.Trim().TrimStart('v', 'V');
+        WhatsNewBannerTitle.Text = ChangelogService.BuildWhatsNewTitle(_whatsNewVersion);
+        WhatsNewBanner.Visibility = Visibility.Visible;
+    }
+
     private void UpdateBannerLink_Click(object sender, RoutedEventArgs e)
     {
         OpenUrl(string.IsNullOrWhiteSpace(_updateReleaseUrl) ? UpdateService.ReleasesPage : _updateReleaseUrl);
+    }
+
+    private void UpdateWhatsNewLink_Click(object sender, RoutedEventArgs e)
+    {
+        OpenChangelogForTag(_updateTag);
     }
 
     private void UpdateBannerDismiss_Click(object sender, RoutedEventArgs e)
@@ -1062,6 +1081,32 @@ public partial class PanelWindow : Window
         {
             _settings.Update(s => s.DismissedUpdateTag = _updateTag);
         }
+    }
+
+    private void WhatsNewBannerLink_Click(object sender, RoutedEventArgs e)
+    {
+        OpenChangelogForVersion(_whatsNewVersion);
+    }
+
+    private void WhatsNewBannerDismiss_Click(object sender, RoutedEventArgs e)
+    {
+        WhatsNewBanner.Visibility = Visibility.Collapsed;
+        if (!string.IsNullOrWhiteSpace(_whatsNewVersion))
+        {
+            _settings.Update(s => s.LastSeenVersion = _whatsNewVersion);
+        }
+    }
+
+    private void OpenChangelogForTag(string tag)
+    {
+        var version = tag.Trim().TrimStart('v', 'V');
+        OpenChangelogForVersion(version, tag);
+    }
+
+    private void OpenChangelogForVersion(string version, string? releaseTag = null)
+    {
+        var app = System.Windows.Application.Current as App;
+        app?.OpenChangelog(version, releaseTag ?? $"v{version}");
     }
 
     /// <summary>Updates the auto-swap profile summary card on the flyout.</summary>

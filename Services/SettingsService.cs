@@ -129,7 +129,10 @@ public sealed class SettingsService
             }
 
             profile.ResolvedTargetProcessName ??= string.Empty;
+            profile.MatchLauncherChildren = profile.MatchLauncherChildren || LauncherCatalog.IsKnownLauncher(profile.ProcessName);
         }
+
+        settings.LastSeenVersion ??= string.Empty;
 
         if (settings.ProcessWatchIntervalMs < 1000)
         {

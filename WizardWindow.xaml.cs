@@ -629,7 +629,11 @@ public partial class WizardWindow : Window
     {
         if (!_isRerun)
         {
-            _settings.Update(s => s.FirstRunCompleted = true);
+            _settings.Update(s =>
+            {
+                s.FirstRunCompleted = true;
+                s.LastSeenVersion = AppInfo.AppVersion;
+            });
         }
 
         DialogResult = true;

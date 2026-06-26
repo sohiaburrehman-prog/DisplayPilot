@@ -69,6 +69,11 @@ public partial class App : System.Windows.Application
         _tray.ProfilesRequested += (_, _) => ShowSettings(focusProfiles: true, beginAddProfile: _settings.Current.Profiles.Count == 0);
         _tray.ViewLogRequested += (_, _) => ShowLog();
         _tray.CyclePrimaryRequested += (_, _) => CyclePrimary();
+        _tray.ProfileApplied += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            _panel?.RefreshMonitors();
+            _tray?.RefreshMenu();
+        });
         _tray.Install();
 
         _processWatcher = new ProcessWatcherService(_settings, _displayManager);
@@ -102,6 +107,7 @@ public partial class App : System.Windows.Application
         AppLogger.Log($"Initialized. PID={Environment.ProcessId}, autostart={_launchedAtStartup}");
 
         _ = RunUpdateCheckAsync();
+        MaybeShowWhatsNew();
 
         if (!_settings.Current.FirstRunCompleted)
         {
@@ -123,7 +129,11 @@ public partial class App : System.Windows.Application
 
         if (isFirstRun && !completed)
         {
-            _settings.Update(s => s.FirstRunCompleted = true);
+            _settings.Update(s =>
+            {
+                s.FirstRunCompleted = true;
+                s.LastSeenVersion = AppInfo.AppVersion;
+            });
         }
 
         if (wizard.SelectedFinishAction == WizardWindow.FinishAction.OpenPanel)
@@ -210,6 +220,47 @@ public partial class App : System.Windows.Application
                 Dispatcher.BeginInvoke(() => _panel?.ShowExternalStatus(ex.Message, success: false));
             }
         });
+    }
+
+    private void MaybeShowWhatsNew()
+    {
+        if (!_settings.Current.FirstRunCompleted)
+        {
+            return;
+        }
+
+        var lastSeen = _settings.Current.LastSeenVersion;
+        if (string.IsNullOrWhiteSpace(lastSeen) ||
+            ChangelogService.ShouldShowWhatsNew(lastSeen, AppInfo.AppVersion))
+        {
+            _panel?.ShowWhatsNewBanner(AppInfo.AppVersion);
+        }
+    }
+
+    public void OpenChangelog(string version, string? releaseTag = null)
+    {
+        var body = ChangelogService.GetSectionForVersion(version);
+        var title = ChangelogService.BuildWhatsNewTitle(version);
+        var window = new PolicyWindow(title, body, $"{AppInfo.AppName} release notes");
+        window.Show();
+        window.Activate();
+
+        if (!string.IsNullOrWhiteSpace(releaseTag))
+        {
+            _ = FetchAndRefreshChangelogAsync(window, releaseTag, version);
+        }
+    }
+
+    private async Task FetchAndRefreshChangelogAsync(PolicyWindow window, string tag, string version)
+    {
+        var body = await ChangelogService.FetchReleaseBodyAsync(tag).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            body = ChangelogService.GetSectionForVersion(version);
+        }
+
+        var text = body;
+        await Dispatcher.BeginInvoke(() => window.UpdateBody(text));
     }
 
     private async Task RunUpdateCheckAsync()

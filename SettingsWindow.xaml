@@ -180,9 +180,10 @@
                                            FontSize="10.5" TextWrapping="Wrap"
                                            Foreground="{StaticResource TextMutedBrush}"
                                            Margin="0,4,0,8" />
-                                <Grid>
+                                <Grid Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBox x:Name="ResolvedTargetBox" Grid.Column="0"
@@ -191,6 +192,12 @@
                                               Style="{StaticResource DarkComboBox}"
                                               Width="180" Margin="8,0,0,0"
                                               SelectionChanged="ResolvedTarget_Changed" />
+                                    <Button Grid.Column="2"
+                                            Content="Suggest running games"
+                                            Style="{StaticResource MiniButton}"
+                                            Margin="8,0,0,0"
+                                            Padding="10,4"
+                                            Click="SuggestRunningGames_Click" />
                                 </Grid>
                             </StackPanel>
                         </Border>

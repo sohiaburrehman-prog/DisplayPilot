@@ -51,6 +51,12 @@ public sealed class AppProfile
 
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// When <see cref="ProcessName"/> is a launcher, also match a game exe that
+    /// appears after the launcher starts (when no resolved target is set).
+    /// </summary>
+    public bool MatchLauncherChildren { get; set; } = true;
+
     /// <summary>Normalized process name without extension, lower-case.</summary>
     public string NormalizedProcessName => NormalizeProcessName(ProcessName);
 
@@ -107,6 +113,7 @@ public sealed class AppProfile
         TargetMonitorDeviceName = TargetMonitorDeviceName,
         RestoreOnExit = RestoreOnExit,
         Enabled = Enabled,
+        MatchLauncherChildren = MatchLauncherChildren,
     };
 }
 
@@ -123,7 +130,7 @@ public sealed class AppSettings
     public const uint ModWin = 0x0008;
     public const uint VkM = 0x4D;
 
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -162,6 +169,9 @@ public sealed class AppSettings
     /// <summary>Release tag the user has already been notified about / dismissed.</summary>
     public string DismissedUpdateTag { get; set; } = string.Empty;
 
+    /// <summary>App version for which the user last dismissed the "What's new" banner.</summary>
+    public string LastSeenVersion { get; set; } = string.Empty;
+
     public AppSettings Clone() => new()
     {
         SchemaVersion = SchemaVersion,
@@ -174,5 +184,6 @@ public sealed class AppSettings
         AutoUpdateCheckEnabled = AutoUpdateCheckEnabled,
         LastUpdateCheckUtc = LastUpdateCheckUtc,
         DismissedUpdateTag = DismissedUpdateTag,
+        LastSeenVersion = LastSeenVersion,
     };
 }

@@ -8,30 +8,21 @@ A lightweight Windows system-tray utility that changes which monitor is the **pr
 
 ## Screenshots
 
-| Flyout panel | Settings | Tray menu |
-| --- | --- | --- |
-| `docs/screenshots/panel.png` | `docs/screenshots/settings.png` | `docs/screenshots/tray.png` |
+| Flyout — Displays | Flyout — Advanced | Settings — Profiles | Setup wizard |
+| --- | --- | --- | --- |
+| ![Flyout Displays tab](docs/screenshots/panel-displays.png) | ![Flyout Advanced tab](docs/screenshots/panel-advanced.png) | ![Settings profiles](docs/screenshots/settings-profiles.png) | ![Setup wizard](docs/screenshots/wizard.png) |
 
-*(PNG files are not committed yet — add them before a public release; see below.)*
-
-### Capturing screenshots
-
-Use **Win+Shift+S** (Snipping Tool) to capture each view, then save PNGs with these exact names in `docs/screenshots/`:
-
-| Filename | What to capture |
-| --- | --- |
-| `panel.png` | Flyout panel open — monitor cards, arrangement map, resolution dropdowns |
-| `settings.png` | Settings window — hotkeys, auto-swap profiles, update check toggle |
-| `tray.png` | Tray right-click menu — monitor list, Settings, log, Exit |
-
-Optional fourth shot: `profiles.png` (auto-swap profile editor with a sample rule). After saving, the table above will render the images on GitHub automatically.
+*Placeholders ship in-repo; replace with real captures using [docs/screenshots/README.md](docs/screenshots/README.md) (Win+Shift+S).*
 
 ## Features
 
 - **One-click primary swap** — click a monitor card or the arrangement map, or use the tray menu.
+- **Tray quick actions** — swap (dual monitor), cycle primary, apply any enabled profile from the tray.
 - **Custom global hotkeys** — rebind the open-panel shortcut (default `Ctrl+Shift+M`) and add an optional "cycle primary" hotkey. Captured in-app, persisted, conflict-checked.
 - **Resolution & refresh switching** — pick any reported resolution/refresh per monitor from the panel; changes are validated before they're applied.
-- **Per-app / per-game auto-swap profiles** — when a chosen process starts, a chosen monitor becomes primary; optionally restore the previous primary on exit. Robust to monitors that aren't connected.
+- **Per-app / per-game auto-swap profiles** — when a chosen process starts, a chosen monitor becomes primary; launcher profiles watch for the game exe spawned after Steam/Epic/etc.; optionally restore the previous primary on exit.
+- **Headless CLI** — list monitors, set primary, export/import settings from scripts (`DisplayPilot.exe --help`).
+- **What's new** — dismissible release-notes banner after upgrades; optional GitHub update check.
 - **Activity log viewer** — view, copy, or open the log folder in-app. Unhandled exceptions are recorded for diagnosis.
 - **Telemetry-free update check** — optional startup check against the GitHub releases API (no downloads, no analytics) with a dismissible banner.
 - **Starts with Windows** — optional, launches hidden to the tray.
@@ -60,12 +51,33 @@ dotnet --list-runtimes
 
 Look for `Microsoft.WindowsDesktop.App 8.x`.
 
+## Install
+
+| Method | Command / link |
+| --- | --- |
+| **GitHub (recommended)** | [DisplayPilot-Setup.exe](https://github.com/sohiaburrehman-prog/DisplayPilot/releases/latest) — per-user, no admin |
+| **Portable** | [DisplayPilot-Portable.zip](https://github.com/sohiaburrehman-prog/DisplayPilot/releases/latest) — self-contained, unzip and run |
+| **winget (community)** | `winget install SohiabRehman.DisplayPilot` after [winget-pkgs PR](packaging/winget/README.md); test locally with `winget install --manifest packaging\winget\SohiabRehman.DisplayPilot\1.5.0` |
+
 ## Download options
 
 | Asset | Runtime needed | Size | Notes |
 | --- | --- | --- | --- |
 | `DisplayPilot-Setup.exe` | .NET 8 Desktop Runtime | ~5 MB | Recommended installer (per-user, no admin). |
 | `DisplayPilot-Portable.zip` | None (bundled) | ~150 MB | Self-contained single exe; unzip and run. |
+
+## Command-line interface
+
+Headless mode (no tray/GUI):
+
+```powershell
+DisplayPilot.exe --help
+DisplayPilot.exe --list-monitors
+DisplayPilot.exe --set-primary 1
+DisplayPilot.exe --set-primary \\.\DISPLAY2
+DisplayPilot.exe --export-settings backup.json
+DisplayPilot.exe --import-settings backup.json
+```
 
 ## Build (development)
 
@@ -102,7 +114,7 @@ See [installer/README.md](installer/README.md) for building `DisplayPilot-Setup.
 
 - **Flyout panel** — opens on first launch and via the hotkey. Set primary, swap, change resolution/refresh, open Settings or the activity log.
 - **Settings window** — rebind hotkeys, manage auto-swap profiles, toggle the update check.
-- **Tray icon** — right-click for quick monitor list, cycle primary, Settings, log, and Exit; double-click to open the panel.
+- **Tray icon** — right-click for displays, **QUICK ACTIONS** (swap, cycle, apply profile), Settings, log, and Exit; double-click to open the panel.
 - **`Ctrl+Shift+M`** (default) — open the panel from anywhere.
 - **X button** — hides to tray (does not exit). Use **Exit** in the tray menu to quit.
 
@@ -116,6 +128,7 @@ Files in `%LOCALAPPDATA%\DisplayPilot\`:
 ```
 DisplayPilot/                      # repo root
 ├── Assets/AppIcon.ico
+├── CHANGELOG.md
 ├── Native/DisplayInterop.cs     # P/Invoke surface
 ├── Services/
 │   ├── DisplayManager.cs        # enumerate, set primary, modes
@@ -123,9 +136,13 @@ DisplayPilot/                      # repo root
 │   ├── HotkeyService.cs         # global hotkey registration
 │   ├── ProcessWatcherService.cs # per-app auto-swap watcher
 │   ├── ProfileMatcher.cs        # pure profile-resolution logic (tested)
+│   ├── CliCommands.cs           # headless CLI
+│   ├── ChangelogService.cs      # release notes
 │   ├── UpdateService.cs         # GitHub release check
 │   ├── StartupService.cs        # run-at-startup registry entry
 │   └── TrayService.cs           # tray icon + menu
+├── packaging/winget/            # winget community manifests
+├── docs/screenshots/            # README screenshots (+ capture guide)
 ├── Models/                      # MonitorInfo, DisplayMode, AppSettings
 ├── PanelWindow.xaml(.cs)        # main flyout
 ├── SettingsWindow.xaml(.cs)     # hotkeys / profiles / updates

@@ -17,4 +17,9 @@ public partial class PolicyWindow : Window
     {
         Close();
     }
+
+    public void UpdateBody(string body)
+    {
+        BodyText.Text = body;
+    }
 }

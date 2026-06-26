@@ -12,6 +12,12 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        if (Services.CliCommands.TryHandle(args, out var cliExitCode))
+        {
+            Environment.Exit(cliExitCode);
+            return;
+        }
+
         using var showPanelEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowPanelEventName);
 
         using var mutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);

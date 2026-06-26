@@ -29,7 +29,8 @@ public static class ProfileMatcher
     public static ProfileEvaluation Evaluate(
         AppProfile profile,
         ISet<string> runningProcessNames,
-        IReadOnlyList<MonitorInfo> connectedMonitors)
+        IReadOnlyList<MonitorInfo> connectedMonitors,
+        string? detectedLauncherChild = null)
     {
         if (profile is null)
         {
@@ -45,7 +46,7 @@ public static class ProfileMatcher
             };
         }
 
-        var processRunning = IsProfileActive(profile, runningProcessNames);
+        var processRunning = IsProfileActive(profile, runningProcessNames, detectedLauncherChild);
         var target = ResolveTarget(profile, connectedMonitors);
         var connected = target is not null;
         var isPrimary = target?.IsPrimary == true;
@@ -53,9 +54,7 @@ public static class ProfileMatcher
         string summary;
         if (!processRunning)
         {
-            var watch = profile.HasResolvedTarget
-                ? $"{profile.NormalizedProcessName} or {profile.NormalizedResolvedTarget}"
-                : profile.NormalizedProcessName;
+            var watch = DescribeWatchTargets(profile, detectedLauncherChild);
             summary = $"No match — neither '{watch}' is running.";
         }
         else if (!connected)
@@ -144,23 +143,86 @@ public static class ProfileMatcher
 
     /// <summary>
     /// True when any configured trigger process for the profile is running.
-    /// Launcher profiles match the launcher and/or the resolved game exe.
+    /// Launcher profiles match the resolved game exe and/or a child process
+    /// detected after the launcher starts.
     /// </summary>
-    public static bool IsProfileActive(AppProfile profile, ISet<string> runningProcessNames)
+    public static bool IsProfileActive(
+        AppProfile profile,
+        ISet<string> runningProcessNames,
+        string? detectedLauncherChild = null)
     {
         if (profile is null || runningProcessNames is null || runningProcessNames.Count == 0)
         {
             return false;
         }
 
-        if (!string.IsNullOrEmpty(profile.NormalizedProcessName) &&
+        var isLauncher = LauncherCatalog.IsKnownLauncher(profile.ProcessName);
+
+        if (!isLauncher &&
+            !string.IsNullOrEmpty(profile.NormalizedProcessName) &&
             runningProcessNames.Contains(profile.NormalizedProcessName))
         {
             return true;
         }
 
-        return profile.HasResolvedTarget &&
-               runningProcessNames.Contains(profile.NormalizedResolvedTarget);
+        if (profile.HasResolvedTarget &&
+            runningProcessNames.Contains(profile.NormalizedResolvedTarget))
+        {
+            return true;
+        }
+
+        if (isLauncher)
+        {
+            if (!profile.HasResolvedTarget &&
+                !string.IsNullOrEmpty(profile.NormalizedProcessName) &&
+                runningProcessNames.Contains(profile.NormalizedProcessName))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(detectedLauncherChild))
+            {
+                var child = NormalizeProcessName(detectedLauncherChild);
+                if (profile.HasResolvedTarget)
+                {
+                    if (string.Equals(child, profile.NormalizedResolvedTarget, StringComparison.OrdinalIgnoreCase) &&
+                        runningProcessNames.Contains(child))
+                    {
+                        return true;
+                    }
+                }
+                else if (profile.MatchLauncherChildren && runningProcessNames.Contains(child))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static string DescribeWatchTargets(AppProfile profile, string? detectedLauncherChild)
+    {
+        if (LauncherCatalog.IsKnownLauncher(profile.ProcessName))
+        {
+            if (profile.HasResolvedTarget)
+            {
+                return profile.NormalizedResolvedTarget;
+            }
+
+            if (!string.IsNullOrWhiteSpace(detectedLauncherChild))
+            {
+                return $"{profile.NormalizedProcessName} child ({detectedLauncherChild})";
+            }
+
+            return profile.MatchLauncherChildren
+                ? $"{profile.NormalizedProcessName} or game child"
+                : profile.NormalizedProcessName;
+        }
+
+        return profile.HasResolvedTarget
+            ? $"{profile.NormalizedProcessName} or {profile.NormalizedResolvedTarget}"
+            : profile.NormalizedProcessName;
     }
 
     private static string NormalizeProcessName(string name)

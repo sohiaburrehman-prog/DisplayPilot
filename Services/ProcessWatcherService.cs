@@ -23,6 +23,9 @@ public sealed class ProcessWatcherService : IDisposable
     // we can restore it on exit.
     private readonly Dictionary<string, string> _previousPrimary = new();
 
+    private readonly Dictionary<string, LauncherChildTracker.WatchState> _launcherWatch = new();
+    private readonly Dictionary<string, bool> _launcherRunningState = new();
+
     private System.Threading.Timer? _timer;
     private bool _polling;
     private bool _disposed;
@@ -100,14 +103,45 @@ public sealed class ProcessWatcherService : IDisposable
             {
                 _runningState.Clear();
                 _previousPrimary.Clear();
+                _launcherWatch.Clear();
+                _launcherRunningState.Clear();
                 return;
             }
 
             var runningNames = GetRunningProcessNames();
+            var detectedChildren = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var profile in profiles)
             {
-                var isRunning = ProfileMatcher.IsProfileActive(profile, runningNames);
+                if (!LauncherChildTracker.IsLauncherProfile(profile))
+                {
+                    _launcherWatch.Remove(profile.Id);
+                    _launcherRunningState.Remove(profile.Id);
+                    continue;
+                }
+
+                var launcherRunning = runningNames.Contains(profile.NormalizedProcessName);
+                var launcherWasRunning = _launcherRunningState.TryGetValue(profile.Id, out var was) && was;
+                _launcherRunningState[profile.Id] = launcherRunning;
+
+                if (!_launcherWatch.TryGetValue(profile.Id, out var watchState))
+                {
+                    watchState = new LauncherChildTracker.WatchState();
+                    _launcherWatch[profile.Id] = watchState;
+                }
+
+                var child = LauncherChildTracker.UpdateWatchState(
+                    profile, watchState, runningNames, launcherWasRunning, launcherRunning);
+                if (!string.IsNullOrWhiteSpace(child))
+                {
+                    detectedChildren[profile.Id] = child;
+                }
+            }
+
+            foreach (var profile in profiles)
+            {
+                detectedChildren.TryGetValue(profile.Id, out var detectedChild);
+                var isRunning = ProfileMatcher.IsProfileActive(profile, runningNames, detectedChild);
                 var wasRunning = _runningState.TryGetValue(profile.Id, out var prev) && prev;
                 _runningState[profile.Id] = isRunning;
 
@@ -127,6 +161,8 @@ public sealed class ProcessWatcherService : IDisposable
             {
                 _runningState.Remove(staleId);
                 _previousPrimary.Remove(staleId);
+                _launcherWatch.Remove(staleId);
+                _launcherRunningState.Remove(staleId);
             }
         }
         catch (Exception ex)

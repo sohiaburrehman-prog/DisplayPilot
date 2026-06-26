@@ -522,6 +522,39 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void SuggestRunningGames_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var recent = ProcessPickerHelper.GetRecentlyStartedExeLabels(withinMinutes: 15);
+            if (recent.Count == 0)
+            {
+                SetStatus("No recently started games found (last 15 min). Launch a game via the launcher first.");
+                return;
+            }
+
+            ResolvedTargetCombo.Items.Clear();
+            ResolvedTargetCombo.Items.Add("Pick running game…");
+            foreach (var exe in recent)
+            {
+                ResolvedTargetCombo.Items.Add(exe);
+            }
+
+            ResolvedTargetCombo.SelectedIndex = recent.Count == 1 ? 1 : 0;
+            if (recent.Count == 1)
+            {
+                ResolvedTargetBox.Text = recent[0];
+            }
+
+            SetStatus($"{recent.Count} recently started process(es) — pick one from the list.");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Settings: suggest running games failed: {ex.Message}");
+            SetStatus("Could not list recently started processes.");
+        }
+    }
+
     private void UpdateResolvedTargetVisibility()
     {
         var process = ProcessNameBox.Text.Trim();

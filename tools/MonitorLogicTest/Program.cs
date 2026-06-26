@@ -188,12 +188,29 @@ var launcherProfile = new AppProfile
     TargetMonitorDeviceName = @"\\.\DISPLAY2",
 };
 Check(launcherProfile.DisplayLabel == "steam → eldenring", $"Launcher profile label (got '{launcherProfile.DisplayLabel}')");
-Check(ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "steam" }),
-    "IsProfileActive matches launcher process");
+Check(!ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "steam" }),
+    "IsProfileActive does not match launcher alone when resolved target is set");
 Check(ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "eldenring" }),
     "IsProfileActive matches resolved game exe");
+Check(ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "eldenring" }, "eldenring"),
+    "IsProfileActive matches detected launcher child");
 Check(!ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "notepad" }),
     "IsProfileActive rejects unrelated process");
+
+var launcherOnlyProfile = new AppProfile
+{
+    ProcessName = "steam.exe",
+    TargetMonitorName = "LG 27GL850",
+    TargetMonitorDeviceName = @"\\.\DISPLAY2",
+    MatchLauncherChildren = true,
+};
+Check(ProfileMatcher.IsProfileActive(launcherOnlyProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "steam" }),
+    "Launcher-only profile matches launcher process");
+Check(ProfileMatcher.IsProfileActive(launcherOnlyProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "eldenring" }, "eldenring"),
+    "Launcher-only profile matches detected child");
+
+Check(ProcessPickerHelper.IsExcludedProcess("steam"), "Launcher processes excluded from child suggestions");
+Check(!ProcessPickerHelper.IsExcludedProcess("eldenring"), "Game processes not excluded from child suggestions");
 
 // ─────────────────── Monitor nicknames ───────────────────
 Console.WriteLine("\n== Monitor nickname persistence ==");
@@ -308,6 +325,16 @@ Check(UpdateService.IsNewer("1.3.0", "1.3.0") == false, "Same version is not new
 Check(UpdateService.IsNewer("v1.2.0", "1.3.0") == false, "Older tag is not newer");
 Check(UpdateService.IsNewer("v1.10.0", "1.9.0"), "Semantic compare: 1.10.0 newer than 1.9.0");
 Check(UpdateService.IsNewer("garbage", "1.0.0") == false, "Unparseable tag is not treated as newer");
+
+// ─────────────────── Changelog / what's new ───────────────────
+Console.WriteLine("\n== Changelog / what's new ==");
+var embedded = ChangelogService.LoadEmbedded();
+Check(embedded.Contains("1.5.0", StringComparison.Ordinal), "Embedded CHANGELOG includes 1.5.0");
+Check(ChangelogService.GetSectionForVersion("1.5.0", embedded).Contains("CLI", StringComparison.OrdinalIgnoreCase),
+    "Changelog section extracts 1.5.0 notes");
+Check(ChangelogService.ShouldShowWhatsNew("1.4.1", "1.5.0"), "ShouldShowWhatsNew true after upgrade");
+Check(!ChangelogService.ShouldShowWhatsNew("1.5.0", "1.5.0"), "ShouldShowWhatsNew false when versions match");
+Check(!ChangelogService.ShouldShowWhatsNew("", "1.5.0"), "ShouldShowWhatsNew false when last seen empty");
 
 Console.WriteLine($"\n{passed} passed, {failed} failed");
 Environment.Exit(failed > 0 ? 1 : 0);

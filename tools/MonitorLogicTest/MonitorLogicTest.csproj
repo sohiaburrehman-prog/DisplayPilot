@@ -13,11 +13,17 @@
     <Compile Include="..\..\Services\SettingsService.cs" />
     <Compile Include="..\..\Services\HotkeyService.cs" />
     <Compile Include="..\..\Services\UpdateService.cs" />
+    <Compile Include="..\..\Services\LauncherCatalog.cs" />
+    <Compile Include="..\..\Services\ProcessPickerHelper.cs" />
+    <Compile Include="..\..\Services\ChangelogService.cs" />
     <Compile Include="..\..\AppInfo.cs" />
     <Compile Include="..\..\Models\MonitorInfo.cs" />
     <Compile Include="..\..\Models\DisplayMode.cs" />
     <Compile Include="..\..\Models\AppSettings.cs" />
     <Compile Include="..\..\Native\DisplayInterop.cs" />
     <Compile Include="..\..\AppLogger.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\CHANGELOG.md" Link="CHANGELOG.md" />
   </ItemGroup>
 </Project>
