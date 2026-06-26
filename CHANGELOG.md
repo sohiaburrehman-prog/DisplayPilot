@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.5.3] — 2026-06-26
+
+### Fixed
+- **Settings window** — Backup & restore and Updates sections no longer clip behind the Close footer; profiles list scrolls only when it overflows
+
 ## [1.5.2] — 2026-06-26
 
 ### Fixed

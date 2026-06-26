@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DisplayPilot — Settings"
         Width="560"
-        Height="680"
+        Height="720"
         MinWidth="520"
-        MinHeight="520"
+        MinHeight="580"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource FlyoutOpaqueBrush}"
         FontFamily="{StaticResource UiFont}">
@@ -13,7 +13,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -33,11 +33,10 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="1" Margin="16,12,16,0">
+        <Grid Grid.Row="1" Margin="16,12,16,8" VerticalAlignment="Top">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -53,7 +52,7 @@
                 <Border Background="{StaticResource MapSurfaceBrush}"
                         BorderBrush="{StaticResource HairlineBrush}"
                         BorderThickness="1" CornerRadius="10"
-                        Padding="14,12" Margin="0,0,0,18">
+                        Padding="14,12" Margin="0,0,0,14">
                     <StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -112,7 +111,7 @@
             </StackPanel>
 
             <!-- ═══════ Profiles (header fixed; list/editor scrolls when needed) ═══════ -->
-            <StackPanel Grid.Row="1" Margin="0,0,0,10">
+            <StackPanel Grid.Row="1" Margin="0,0,0,8">
                 <Grid x:Name="ProfilesSectionAnchor" Margin="2,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -137,7 +136,8 @@
             <ScrollViewer x:Name="ProfilesScroll"
                           Grid.Row="2"
                           VerticalScrollBarVisibility="Auto"
-                          Margin="0,0,0,18">
+                          MaxHeight="240"
+                          Margin="0,0,0,12">
                 <StackPanel>
                     <StackPanel x:Name="ProfileListPanel" />
 
@@ -242,17 +242,15 @@
             </ScrollViewer>
 
             <StackPanel Grid.Row="3">
-
-                <!-- ═══════ Backup & restore ═══════ -->
                 <TextBlock Text="BACKUP &amp; RESTORE"
                            FontSize="11" FontWeight="Bold"
                            Foreground="{StaticResource TextMutedBrush}"
-                           Margin="2,20,0,8" />
+                           Margin="2,12,0,8" />
 
                 <Border Background="{StaticResource MapSurfaceBrush}"
                         BorderBrush="{StaticResource HairlineBrush}"
                         BorderThickness="1" CornerRadius="10"
-                        Padding="14,12" Margin="0,0,0,8">
+                        Padding="14,12" Margin="0,0,0,6">
                     <StackPanel>
                         <TextBlock Text="Export or import your settings file (hotkeys, profiles, nicknames). Import replaces all settings after confirmation; a backup of the current file is saved first."
                                    FontSize="11" TextWrapping="Wrap"
@@ -279,12 +277,12 @@
                 <TextBlock Text="UPDATES"
                            FontSize="11" FontWeight="Bold"
                            Foreground="{StaticResource TextMutedBrush}"
-                           Margin="2,20,0,8" />
+                           Margin="2,12,0,8" />
 
                 <Border Background="{StaticResource MapSurfaceBrush}"
                         BorderBrush="{StaticResource HairlineBrush}"
                         BorderThickness="1" CornerRadius="10"
-                        Padding="14,12" Margin="0,0,0,8">
+                        Padding="14,12" Margin="0,0,0,0">
                     <StackPanel>
                         <CheckBox x:Name="AutoUpdateCheck"
                                   Style="{StaticResource DarkCheckBox}"
