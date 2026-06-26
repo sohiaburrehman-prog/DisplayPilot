@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.5.1] — 2026-06-26
+
+### Fixed
+- **Settings window** — removed unnecessary scrollbar in the default state; only the profiles list/editor area scrolls when content overflows
+
 ## [1.5.0] — 2026-06-26
 
 ### Added

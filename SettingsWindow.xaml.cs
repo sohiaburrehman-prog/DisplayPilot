@@ -926,6 +926,11 @@ public partial class SettingsWindow : Window
         {
             AddProfile_Click(this, new RoutedEventArgs());
         }
+
+        if (ProfileEditor.Visibility == Visibility.Visible)
+        {
+            ProfileEditor.BringIntoView();
+        }
     }
 
     private void SetStatus(string message) => StatusText.Text = message;
