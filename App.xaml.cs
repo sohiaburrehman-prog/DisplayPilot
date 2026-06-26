@@ -229,9 +229,7 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        var lastSeen = _settings.Current.LastSeenVersion;
-        if (string.IsNullOrWhiteSpace(lastSeen) ||
-            ChangelogService.ShouldShowWhatsNew(lastSeen, AppInfo.AppVersion))
+        if (ChangelogService.ShouldShowWhatsNew(_settings.Current.LastSeenVersion, AppInfo.AppVersion))
         {
             _panel?.ShowWhatsNewBanner(AppInfo.AppVersion);
         }

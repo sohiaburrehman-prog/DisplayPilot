@@ -94,11 +94,20 @@ public static class ChangelogService
         return null;
     }
 
+    /// <summary>
+    /// True when the user has not yet read/dismissed release notes for
+    /// <paramref name="currentVersion"/> (e.g. after an upgrade).
+    /// </summary>
     public static bool ShouldShowWhatsNew(string? lastSeenVersion, string currentVersion)
     {
-        if (string.IsNullOrWhiteSpace(lastSeenVersion))
+        if (string.IsNullOrWhiteSpace(currentVersion))
         {
             return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(lastSeenVersion))
+        {
+            return true;
         }
 
         if (string.Equals(

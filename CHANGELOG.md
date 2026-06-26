@@ -2,6 +2,12 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.5.2] — 2026-06-26
+
+### Fixed
+- **What's new banner** — reading or dismissing release notes for the current version now persists across panel opens and app restarts; banner only reappears after upgrading to a newer version
+- **Update banner** — clicking "What's new" on the update banner now dismisses it the same way as the close button
+
 ## [1.5.1] — 2026-06-26
 
 ### Fixed

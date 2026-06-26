@@ -1059,6 +1059,12 @@ public partial class PanelWindow : Window
             return;
         }
 
+        if (!ChangelogService.ShouldShowWhatsNew(_settings.Current.LastSeenVersion, version))
+        {
+            WhatsNewBanner.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         _whatsNewVersion = version.Trim().TrimStart('v', 'V');
         WhatsNewBannerTitle.Text = ChangelogService.BuildWhatsNewTitle(_whatsNewVersion);
         WhatsNewBanner.Visibility = Visibility.Visible;
@@ -1071,10 +1077,16 @@ public partial class PanelWindow : Window
 
     private void UpdateWhatsNewLink_Click(object sender, RoutedEventArgs e)
     {
+        DismissUpdateBanner();
         OpenChangelogForTag(_updateTag);
     }
 
     private void UpdateBannerDismiss_Click(object sender, RoutedEventArgs e)
+    {
+        DismissUpdateBanner();
+    }
+
+    private void DismissUpdateBanner()
     {
         UpdateBanner.Visibility = Visibility.Collapsed;
         if (!string.IsNullOrWhiteSpace(_updateTag))
@@ -1085,16 +1097,33 @@ public partial class PanelWindow : Window
 
     private void WhatsNewBannerLink_Click(object sender, RoutedEventArgs e)
     {
+        MarkWhatsNewSeen();
         OpenChangelogForVersion(_whatsNewVersion);
     }
 
     private void WhatsNewBannerDismiss_Click(object sender, RoutedEventArgs e)
     {
+        MarkWhatsNewSeen();
+    }
+
+    private void MarkWhatsNewSeen()
+    {
         WhatsNewBanner.Visibility = Visibility.Collapsed;
-        if (!string.IsNullOrWhiteSpace(_whatsNewVersion))
+        if (string.IsNullOrWhiteSpace(_whatsNewVersion))
         {
-            _settings.Update(s => s.LastSeenVersion = _whatsNewVersion);
+            return;
         }
+
+        var version = _whatsNewVersion;
+        if (string.Equals(
+                _settings.Current.LastSeenVersion?.Trim().TrimStart('v', 'V'),
+                version,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _settings.Update(s => s.LastSeenVersion = version);
     }
 
     private void OpenChangelogForTag(string tag)

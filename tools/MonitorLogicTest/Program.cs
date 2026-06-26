@@ -334,7 +334,8 @@ Check(ChangelogService.GetSectionForVersion("1.5.0", embedded).Contains("CLI", S
     "Changelog section extracts 1.5.0 notes");
 Check(ChangelogService.ShouldShowWhatsNew("1.4.1", "1.5.0"), "ShouldShowWhatsNew true after upgrade");
 Check(!ChangelogService.ShouldShowWhatsNew("1.5.0", "1.5.0"), "ShouldShowWhatsNew false when versions match");
-Check(!ChangelogService.ShouldShowWhatsNew("", "1.5.0"), "ShouldShowWhatsNew false when last seen empty");
+Check(ChangelogService.ShouldShowWhatsNew("", "1.5.0"), "ShouldShowWhatsNew true when last seen empty");
+Check(!ChangelogService.ShouldShowWhatsNew("1.5.1", "1.5.0"), "ShouldShowWhatsNew false when downgraded");
 
 Console.WriteLine($"\n{passed} passed, {failed} failed");
 Environment.Exit(failed > 0 ? 1 : 0);
