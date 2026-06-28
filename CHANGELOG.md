@@ -2,6 +2,16 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.6.0] — 2026-06-28
+
+### Added
+- **Profile manager** — dedicated Auto-swap profiles window for viewing, adding, editing, and deleting game profiles
+- **Shared profile editor** — reusable editor control with process picker, launcher target, monitor combo, restore-on-exit, and test profile
+
+### Changed
+- **Settings** — profile list and editor removed; single "Open profile manager" link remains
+- **Navigation** — Panel Advanced tab "Manage ›" and tray "Manage game profiles…" open the profile manager instead of Settings
+
 ## [1.5.4] — 2026-06-28
 
 ### Fixed

@@ -1,0 +1,99 @@
+<Window x:Class="PrimaryDisplaySwap.ProfilesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DisplayPilot — Auto-swap profiles"
+        Width="560"
+        Height="620"
+        MinWidth="520"
+        MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource FlyoutOpaqueBrush}"
+        FontFamily="{StaticResource UiFont}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{StaticResource HeaderBrush}"
+                BorderBrush="{StaticResource HairlineBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="20,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Auto-swap profiles"
+                               FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                    <TextBlock x:Name="StatusText"
+                               FontSize="11"
+                               Margin="0,4,0,0"
+                               Foreground="{StaticResource TextMutedBrush}" />
+                </StackPanel>
+                <Button x:Name="AddProfileButton" Grid.Column="1"
+                        Style="{StaticResource MiniButton}"
+                        Content="+ Add profile"
+                        VerticalAlignment="Center"
+                        Click="AddProfile_Click" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="16,12,16,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock x:Name="ListHintText"
+                       Grid.Row="0"
+                       Text="When a chosen app or launcher starts, make a chosen monitor primary; optionally restore it on exit."
+                       FontSize="11" TextWrapping="Wrap"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       Margin="2,0,0,10" />
+
+            <ScrollViewer x:Name="ProfilesScroll"
+                          Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <StackPanel x:Name="ProfileListPanel" />
+
+                    <TextBlock x:Name="NoProfilesText"
+                               Text="No profiles yet."
+                               FontSize="11.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="2,2,0,8" />
+
+                    <Button x:Name="EmptyAddButton"
+                            Style="{StaticResource AccentMiniButton}"
+                            Content="+ Add profile"
+                            HorizontalAlignment="Left"
+                            Width="140"
+                            Margin="0,0,0,8"
+                            Click="AddProfile_Click" />
+
+                    <Border x:Name="ProfileEditorPanel"
+                            Visibility="Collapsed"
+                            Background="{StaticResource CardBrush}"
+                            BorderBrush="{StaticResource AccentBrush}"
+                            BorderThickness="1" CornerRadius="10"
+                            Padding="14,12" />
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <Border Grid.Row="2" Padding="16,14,16,16"
+                Background="{StaticResource HeaderBrush}"
+                BorderBrush="{StaticResource HairlineBrush}"
+                BorderThickness="0,1,0,0">
+            <Button Content="Close" Style="{StaticResource AccentMiniButton}"
+                    Height="38" HorizontalAlignment="Right" Width="120"
+                    Click="Close_Click" />
+        </Border>
+    </Grid>
+</Window>

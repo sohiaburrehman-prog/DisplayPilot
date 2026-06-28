@@ -28,6 +28,7 @@ public partial class App : System.Windows.Application
     private TrayService? _tray;
     private PanelWindow? _panel;
     private SettingsWindow? _settingsWindow;
+    private ProfilesWindow? _profilesWindow;
     private LogViewerWindow? _logWindow;
     private ProcessWatcherService? _processWatcher;
     private HwndSource? _hwndSource;
@@ -48,7 +49,7 @@ public partial class App : System.Windows.Application
 
         _panel = new PanelWindow(_displayManager, _startupService, _settings);
         _panel.SettingsRequested += (_, _) => ShowSettings();
-        _panel.ProfilesRequested += (_, _) => ShowSettings(focusProfiles: true, beginAddProfile: _settings.Current.Profiles.Count == 0);
+        _panel.ProfilesRequested += (_, _) => ShowProfiles(beginAdd: _settings.Current.Profiles.Count == 0);
         _panel.ViewLogRequested += (_, _) => ShowLog();
 
         // Create the window handle without showing the window, so the global
@@ -66,7 +67,7 @@ public partial class App : System.Windows.Application
         _tray.ExitRequested += (_, _) => ExitApplication();
         _tray.PrimaryChanged += (_, _) => _panel?.RefreshMonitors();
         _tray.SettingsRequested += (_, _) => ShowSettings();
-        _tray.ProfilesRequested += (_, _) => ShowSettings(focusProfiles: true, beginAddProfile: _settings.Current.Profiles.Count == 0);
+        _tray.ProfilesRequested += (_, _) => ShowProfiles(beginAdd: _settings.Current.Profiles.Count == 0);
         _tray.ViewLogRequested += (_, _) => ShowLog();
         _tray.CyclePrimaryRequested += (_, _) => CyclePrimary();
         _tray.ProfileApplied += (_, _) => Dispatcher.BeginInvoke(() =>
@@ -152,7 +153,8 @@ public partial class App : System.Windows.Application
             _panel?.RefreshProfilesSummary();
             _panel?.RefreshMonitors();
             _tray?.RefreshMenu();
-            _settingsWindow?.RefreshMonitors();
+            _settingsWindow?.LoadFromSettings();
+            _profilesWindow?.RefreshMonitors();
         });
     }
 
@@ -173,7 +175,8 @@ public partial class App : System.Windows.Application
         {
             _panel?.RefreshMonitors();
             _tray?.RefreshMenu();
-            _settingsWindow?.RefreshMonitors();
+            _settingsWindow?.LoadFromSettings();
+            _profilesWindow?.RefreshMonitors();
         });
     }
 
@@ -329,34 +332,52 @@ public partial class App : System.Windows.Application
             _settingsWindow.Hide();
         }
 
+        if (_profilesWindow is not null)
+        {
+            _profilesWindow.Hide();
+        }
+
         ShowWizard(isFirstRun: false);
 
         if (_settingsWindow is not null)
         {
             _settingsWindow.Show();
             _settingsWindow.LoadFromSettings();
-            _settingsWindow.RefreshMonitors();
         }
     }
 
-    private void ShowSettings(bool focusProfiles = false, bool beginAddProfile = false)
+    private void ShowSettings()
     {
         if (_settingsWindow is null)
         {
-            _settingsWindow = new SettingsWindow(_displayManager, _settings, RunSetupWizard);
+            _settingsWindow = new SettingsWindow(_settings, RunSetupWizard, () => ShowProfiles());
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();
-            if (focusProfiles)
-            {
-                _settingsWindow.FocusProfilesSection(beginAddProfile);
-            }
         }
         else
         {
             _settingsWindow.Activate();
-            if (focusProfiles)
+        }
+    }
+
+    private void ShowProfiles(bool beginAdd = false)
+    {
+        if (_profilesWindow is null)
+        {
+            _profilesWindow = new ProfilesWindow(_displayManager, _settings);
+            _profilesWindow.Closed += (_, _) => _profilesWindow = null;
+            _profilesWindow.Show();
+            if (beginAdd)
             {
-                _settingsWindow.FocusProfilesSection(beginAddProfile);
+                _profilesWindow.BeginAddProfile();
+            }
+        }
+        else
+        {
+            _profilesWindow.Activate();
+            if (beginAdd)
+            {
+                _profilesWindow.BeginAddProfile();
             }
         }
     }

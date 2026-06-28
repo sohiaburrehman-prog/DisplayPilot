@@ -1154,7 +1154,7 @@ public partial class PanelWindow : Window
         {
             ProfilesSummaryText.Text = "Switch primary when a game or app starts — launcher profiles supported";
             ProfilesManageHint.Text = "Add ›";
-            ProfilesCard.ToolTip = "Add an auto-swap profile in Settings (pick a game exe or launcher like Steam)";
+            ProfilesCard.ToolTip = "Add an auto-swap profile (pick a game exe or launcher like Steam)";
             return;
         }
 
@@ -1167,7 +1167,7 @@ public partial class PanelWindow : Window
             ? $"{enabled} active — {preview}"
             : $"{enabled} of {profiles.Count} active — {preview}";
         ProfilesManageHint.Text = "Manage ›";
-        ProfilesCard.ToolTip = "Open Settings to manage auto-swap profiles";
+        ProfilesCard.ToolTip = "Open the profile manager to add, edit, or remove auto-swap profiles";
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e) =>

@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DisplayPilot — Settings"
         Width="560"
-        Height="720"
+        Height="520"
         MinWidth="520"
-        MinHeight="580"
+        MinHeight="420"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource FlyoutOpaqueBrush}"
         FontFamily="{StaticResource UiFont}">
@@ -33,285 +33,172 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="1" Margin="16,12,16,8" VerticalAlignment="Top">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <StackPanel Grid.Row="1" Margin="16,12,16,8" VerticalAlignment="Top">
 
-            <StackPanel Grid.Row="0">
+            <!-- ═══════ Hotkeys ═══════ -->
+            <TextBlock Text="HOTKEYS"
+                       FontSize="11" FontWeight="Bold"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       Margin="2,0,0,8" />
 
-                <!-- ═══════ Hotkeys ═══════ -->
-                <TextBlock Text="HOTKEYS"
-                           FontSize="11" FontWeight="Bold"
-                           Foreground="{StaticResource TextMutedBrush}"
-                           Margin="2,0,0,8" />
+            <Border Background="{StaticResource MapSurfaceBrush}"
+                    BorderBrush="{StaticResource HairlineBrush}"
+                    BorderThickness="1" CornerRadius="10"
+                    Padding="14,12" Margin="0,0,0,14">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Open control panel"
+                                       FontSize="12.5"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Text="Global shortcut to show the flyout"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Button x:Name="OpenPanelCapture" Grid.Column="1"
+                                Style="{StaticResource MiniButton}"
+                                MinWidth="150"
+                                Click="CaptureOpenPanel_Click" />
+                    </Grid>
 
-                <Border Background="{StaticResource MapSurfaceBrush}"
-                        BorderBrush="{StaticResource HairlineBrush}"
-                        BorderThickness="1" CornerRadius="10"
-                        Padding="14,12" Margin="0,0,0,14">
-                    <StackPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="Open control panel"
-                                           FontSize="12.5"
-                                           Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBlock Text="Global shortcut to show the flyout"
-                                           FontSize="11"
-                                           Foreground="{StaticResource TextMutedBrush}"
-                                           Margin="0,2,0,0" />
-                            </StackPanel>
-                            <Button x:Name="OpenPanelCapture" Grid.Column="1"
-                                    Style="{StaticResource MiniButton}"
-                                    MinWidth="150"
-                                    Click="CaptureOpenPanel_Click" />
-                        </Grid>
+                    <Rectangle Height="1" Fill="{StaticResource HairlineBrush}" Margin="0,12" />
 
-                        <Rectangle Height="1" Fill="{StaticResource HairlineBrush}" Margin="0,12" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <CheckBox x:Name="CycleEnabledCheck"
+                                      Style="{StaticResource DarkCheckBox}"
+                                      Content="Cycle primary display"
+                                      Foreground="{StaticResource TextPrimaryBrush}"
+                                      Checked="CycleEnabled_Changed"
+                                      Unchecked="CycleEnabled_Changed" />
+                            <TextBlock Text="Optional shortcut to rotate the primary monitor"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       Margin="27,2,0,0" />
+                        </StackPanel>
+                        <Button x:Name="CycleCapture" Grid.Column="1"
+                                Style="{StaticResource MiniButton}"
+                                MinWidth="150"
+                                Click="CaptureCycle_Click" />
+                    </Grid>
 
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <CheckBox x:Name="CycleEnabledCheck"
-                                          Style="{StaticResource DarkCheckBox}"
-                                          Content="Cycle primary display"
-                                          Foreground="{StaticResource TextPrimaryBrush}"
-                                          Checked="CycleEnabled_Changed"
-                                          Unchecked="CycleEnabled_Changed" />
-                                <TextBlock Text="Optional shortcut to rotate the primary monitor"
-                                           FontSize="11"
-                                           Foreground="{StaticResource TextMutedBrush}"
-                                           Margin="27,2,0,0" />
-                            </StackPanel>
-                            <Button x:Name="CycleCapture" Grid.Column="1"
-                                    Style="{StaticResource MiniButton}"
-                                    MinWidth="150"
-                                    Click="CaptureCycle_Click" />
-                        </Grid>
+                    <TextBlock x:Name="CaptureHint"
+                               Text=""
+                               FontSize="11"
+                               Foreground="{StaticResource AccentHoverBrush}"
+                               Margin="0,10,0,0"
+                               Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
 
-                        <TextBlock x:Name="CaptureHint"
-                                   Text=""
-                                   FontSize="11"
-                                   Foreground="{StaticResource AccentHoverBrush}"
-                                   Margin="0,10,0,0"
-                                   Visibility="Collapsed" />
-                    </StackPanel>
-                </Border>
+            <!-- ═══════ Auto-swap profiles link ═══════ -->
+            <TextBlock Text="AUTO-SWAP PROFILES"
+                       FontSize="11" FontWeight="Bold"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       Margin="2,0,0,8" />
 
-            </StackPanel>
-
-            <!-- ═══════ Profiles (header fixed; list/editor scrolls when needed) ═══════ -->
-            <StackPanel Grid.Row="1" Margin="0,0,0,8">
-                <Grid x:Name="ProfilesSectionAnchor" Margin="2,0,0,8">
+            <Border Background="{StaticResource MapSurfaceBrush}"
+                    BorderBrush="{StaticResource HairlineBrush}"
+                    BorderThickness="1" CornerRadius="10"
+                    Padding="14,12" Margin="0,0,0,14">
+                <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="AUTO-SWAP PROFILES"
-                               FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               VerticalAlignment="Center" />
-                    <Button x:Name="AddProfileButton" Grid.Column="1"
-                            Style="{StaticResource MiniButton}"
-                            Content="+ Add profile"
-                            Click="AddProfile_Click" />
-                </Grid>
-
-                <TextBlock Text="When a chosen app or launcher starts, make a chosen monitor primary; optionally restore it on exit. Launcher profiles can watch the game exe directly for reliable matching."
-                           FontSize="11" TextWrapping="Wrap"
-                           Foreground="{StaticResource TextMutedBrush}"
-                           Margin="2,0,0,0" />
-            </StackPanel>
-
-            <ScrollViewer x:Name="ProfilesScroll"
-                          Grid.Row="2"
-                          VerticalScrollBarVisibility="Auto"
-                          MaxHeight="240"
-                          Margin="0,0,0,12">
-                <StackPanel>
-                    <StackPanel x:Name="ProfileListPanel" />
-
-                    <TextBlock x:Name="NoProfilesText"
-                               Text="No profiles yet. Add one to auto-switch the primary display for a game or app."
-                               FontSize="11.5" TextWrapping="Wrap"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="2,2,0,0" />
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- Profile editor sits outside the list scroll area so it never gets an inner scrollbar -->
-            <Border x:Name="ProfileEditor"
-                    Grid.Row="3"
-                    Visibility="Collapsed"
-                    Background="{StaticResource CardBrush}"
-                    BorderBrush="{StaticResource AccentBrush}"
-                    BorderThickness="1" CornerRadius="10"
-                    Padding="14,12" Margin="0,0,0,12">
-                <StackPanel>
-                        <TextBlock x:Name="ProfileEditorTitle"
-                                   Text="New profile"
-                                   FontSize="13" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}"
-                                   Margin="0,0,0,12" />
-
-                        <TextBlock Text="App or launcher (e.g. game.exe or steam.exe)"
-                                   FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="ProcessNameBox" Grid.Column="0"
-                                     Style="{StaticResource DarkTextBox}" />
-                            <ComboBox x:Name="RunningProcessCombo" Grid.Column="1"
-                                      Style="{StaticResource DarkComboBox}"
-                                      Width="200" Margin="8,0,0,0"
-                                      SelectionChanged="RunningProcess_Changed" />
-                        </Grid>
-                        <TextBlock Text="Pick from running processes or common launchers. For Steam/Epic/etc., set the game exe below when possible."
-                                   FontSize="10.5" TextWrapping="Wrap"
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="Game profiles"
+                                   FontSize="12.5"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="Add, edit, or remove auto-swap rules in the profile manager."
+                                   FontSize="11" TextWrapping="Wrap"
                                    Foreground="{StaticResource TextMutedBrush}"
-                                   Margin="0,0,0,10" />
+                                   Margin="0,2,0,0" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Content="Open profile manager"
+                            Style="{StaticResource AccentMiniButton}"
+                            VerticalAlignment="Center"
+                            Padding="14,6"
+                            Click="OpenProfileManager_Click" />
+                </Grid>
+            </Border>
 
-                        <Border x:Name="ResolvedTargetPanel"
-                                Visibility="Collapsed"
-                                Background="{StaticResource MapSurfaceBrush}"
-                                BorderBrush="{StaticResource HairlineBrush}"
-                                BorderThickness="1" CornerRadius="8"
-                                Padding="12,10" Margin="0,0,0,10">
-                            <StackPanel>
-                                <TextBlock Text="Resolve game from launcher (optional but recommended)"
-                                           FontSize="11.5" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBlock Text="Match when this exe is running (e.g. eldenring.exe). Without it, only the launcher process triggers the profile."
-                                           FontSize="10.5" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextMutedBrush}"
-                                           Margin="0,4,0,8" />
-                                <Grid Margin="0,8,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox x:Name="ResolvedTargetBox" Grid.Column="0"
-                                             Style="{StaticResource DarkTextBox}" />
-                                    <ComboBox x:Name="ResolvedTargetCombo" Grid.Column="1"
-                                              Style="{StaticResource DarkComboBox}"
-                                              Width="180" Margin="8,0,0,0"
-                                              SelectionChanged="ResolvedTarget_Changed" />
-                                    <Button Grid.Column="2"
-                                            Content="Suggest running games"
-                                            Style="{StaticResource MiniButton}"
-                                            Margin="8,0,0,0"
-                                            Padding="10,4"
-                                            Click="SuggestRunningGames_Click" />
-                                </Grid>
-                            </StackPanel>
-                        </Border>
+            <TextBlock Text="BACKUP &amp; RESTORE"
+                       FontSize="11" FontWeight="Bold"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       Margin="2,0,0,8" />
 
-                        <TextBlock Text="Make this monitor primary"
-                                   FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
-                        <ComboBox x:Name="TargetMonitorCombo"
-                                  Style="{StaticResource DarkComboBox}"
-                                  DisplayMemberPath="Label"
-                                  Margin="0,0,0,12" />
-
-                        <CheckBox x:Name="RestoreOnExitCheck"
-                                  Style="{StaticResource DarkCheckBox}"
-                                  Content="Restore previous primary when the app exits"
-                                  IsChecked="True"
-                                  Margin="0,0,0,14" />
-
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Test profile" Style="{StaticResource MiniButton}"
-                                    Width="100" Margin="0,0,8,0" Click="TestEditingProfile_Click" />
-                            <Button Content="Cancel" Style="{StaticResource MiniButton}"
-                                    Width="92" Click="CancelProfile_Click" />
-                            <Button x:Name="SaveProfileButton" Content="Save" Style="{StaticResource AccentMiniButton}"
-                                    Width="92" Margin="8,0,0,0" Click="SaveProfile_Click" />
-                        </StackPanel>
+            <Border Background="{StaticResource MapSurfaceBrush}"
+                    BorderBrush="{StaticResource HairlineBrush}"
+                    BorderThickness="1" CornerRadius="10"
+                    Padding="14,12" Margin="0,0,0,6">
+                <StackPanel>
+                    <TextBlock Text="Export or import your settings file (hotkeys, profiles, nicknames). Import replaces all settings after confirmation; a backup of the current file is saved first."
+                               FontSize="11" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Margin="0,0,0,12" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="ExportSettingsButton" Content="Export settings"
+                                Style="{StaticResource MiniButton}" Width="130"
+                                Click="ExportSettings_Click" />
+                        <Button x:Name="ImportSettingsButton" Content="Import settings"
+                                Style="{StaticResource MiniButton}" Width="130"
+                                Margin="8,0,0,0"
+                                Click="ImportSettings_Click" />
+                    </StackPanel>
+                    <Button x:Name="RunWizardButton" Content="Run setup wizard again"
+                            Style="{StaticResource MiniButton}"
+                            HorizontalAlignment="Left"
+                            Margin="0,12,0,0"
+                            Click="RunWizard_Click" />
                 </StackPanel>
             </Border>
 
-            <StackPanel Grid.Row="4">
-                <TextBlock Text="BACKUP &amp; RESTORE"
-                           FontSize="11" FontWeight="Bold"
-                           Foreground="{StaticResource TextMutedBrush}"
-                           Margin="2,12,0,8" />
+            <!-- ═══════ Updates ═══════ -->
+            <TextBlock Text="UPDATES"
+                       FontSize="11" FontWeight="Bold"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       Margin="2,12,0,8" />
 
-                <Border Background="{StaticResource MapSurfaceBrush}"
-                        BorderBrush="{StaticResource HairlineBrush}"
-                        BorderThickness="1" CornerRadius="10"
-                        Padding="14,12" Margin="0,0,0,6">
-                    <StackPanel>
-                        <TextBlock Text="Export or import your settings file (hotkeys, profiles, nicknames). Import replaces all settings after confirmation; a backup of the current file is saved first."
-                                   FontSize="11" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   Margin="0,0,0,12" />
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="ExportSettingsButton" Content="Export settings"
-                                    Style="{StaticResource MiniButton}" Width="130"
-                                    Click="ExportSettings_Click" />
-                            <Button x:Name="ImportSettingsButton" Content="Import settings"
-                                    Style="{StaticResource MiniButton}" Width="130"
-                                    Margin="8,0,0,0"
-                                    Click="ImportSettings_Click" />
-                        </StackPanel>
-                        <Button x:Name="RunWizardButton" Content="Run setup wizard again"
-                                Style="{StaticResource MiniButton}"
-                                HorizontalAlignment="Left"
-                                Margin="0,12,0,0"
-                                Click="RunWizard_Click" />
+            <Border Background="{StaticResource MapSurfaceBrush}"
+                    BorderBrush="{StaticResource HairlineBrush}"
+                    BorderThickness="1" CornerRadius="10"
+                    Padding="14,12" Margin="0,0,0,0">
+                <StackPanel>
+                    <CheckBox x:Name="AutoUpdateCheck"
+                              Style="{StaticResource DarkCheckBox}"
+                              Content="Check GitHub for updates on startup"
+                              Foreground="{StaticResource TextPrimaryBrush}"
+                              Checked="AutoUpdate_Changed"
+                              Unchecked="AutoUpdate_Changed" />
+                    <TextBlock Text="Telemetry-free: queries only the public GitHub releases API."
+                               FontSize="11"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Margin="27,2,0,12" />
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="CheckNowButton" Content="Check now"
+                                Style="{StaticResource MiniButton}" Width="120"
+                                Click="CheckNow_Click" />
+                        <TextBlock x:Name="UpdateStatusText"
+                                   VerticalAlignment="Center"
+                                   Margin="12,0,0,0"
+                                   FontSize="11.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
                     </StackPanel>
-                </Border>
+                </StackPanel>
+            </Border>
 
-                <!-- ═══════ Updates ═══════ -->
-                <TextBlock Text="UPDATES"
-                           FontSize="11" FontWeight="Bold"
-                           Foreground="{StaticResource TextMutedBrush}"
-                           Margin="2,12,0,8" />
-
-                <Border Background="{StaticResource MapSurfaceBrush}"
-                        BorderBrush="{StaticResource HairlineBrush}"
-                        BorderThickness="1" CornerRadius="10"
-                        Padding="14,12" Margin="0,0,0,0">
-                    <StackPanel>
-                        <CheckBox x:Name="AutoUpdateCheck"
-                                  Style="{StaticResource DarkCheckBox}"
-                                  Content="Check GitHub for updates on startup"
-                                  Foreground="{StaticResource TextPrimaryBrush}"
-                                  Checked="AutoUpdate_Changed"
-                                  Unchecked="AutoUpdate_Changed" />
-                        <TextBlock Text="Telemetry-free: queries only the public GitHub releases API."
-                                   FontSize="11"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   Margin="27,2,0,12" />
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="CheckNowButton" Content="Check now"
-                                    Style="{StaticResource MiniButton}" Width="120"
-                                    Click="CheckNow_Click" />
-                            <TextBlock x:Name="UpdateStatusText"
-                                       VerticalAlignment="Center"
-                                       Margin="12,0,0,0"
-                                       FontSize="11.5"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-            </StackPanel>
-        </Grid>
+        </StackPanel>
 
         <Border Grid.Row="2" Padding="16,14,16,16"
                 Background="{StaticResource HeaderBrush}"

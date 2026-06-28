@@ -22,7 +22,7 @@ internal static class AppInfo
             • With two monitors, use Swap Displays for a one-click switch
             • Open Settings to rebind hotkeys or add an optional cycle-primary shortcut
             • Pick resolution and refresh per monitor from the panel dropdowns
-            • Add auto-swap profiles in Settings — when a chosen app starts, a chosen monitor becomes primary
+            • Add auto-swap profiles in the profile manager — when a chosen app starts, a chosen monitor becomes primary
             • View or copy the activity log from the panel or tray menu
             • Optional update check uses the GitHub releases page only (no analytics); disable in Settings
             • Enable Start with Windows if you want DisplayPilot ready after sign-in
