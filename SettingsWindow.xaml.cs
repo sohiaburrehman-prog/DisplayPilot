@@ -368,7 +368,15 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            else
+            {
+                AppLogger.Log($"Refused to open untrusted URL: '{url}'");
+            }
         }
         catch (Exception ex)
         {

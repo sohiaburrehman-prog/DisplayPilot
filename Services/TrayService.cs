@@ -544,7 +544,15 @@ internal sealed class TrayService : IDisposable
     {
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            else
+            {
+                AppLogger.Log($"Tray: refused to open untrusted URL '{url}'");
+            }
         }
         catch (Exception ex)
         {
