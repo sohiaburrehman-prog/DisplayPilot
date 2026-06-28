@@ -368,7 +368,15 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uriResult) &&
+                (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            else
+            {
+                AppLogger.Log($"Invalid URL scheme for '{url}'. Only HTTP and HTTPS are allowed.");
+            }
         }
         catch (Exception ex)
         {

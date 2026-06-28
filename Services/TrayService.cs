@@ -544,7 +544,15 @@ internal sealed class TrayService : IDisposable
     {
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uriResult) &&
+                (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            else
+            {
+                AppLogger.Log($"Tray: Invalid URL scheme for '{url}'. Only HTTP and HTTPS are allowed.");
+            }
         }
         catch (Exception ex)
         {
