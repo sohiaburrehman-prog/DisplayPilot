@@ -2,6 +2,12 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.5.4] — 2026-06-28
+
+### Fixed
+- **Settings profile editor** — editor no longer scrolls inside the profiles list; list hides while editing and the window grows so Backup & restore and Updates stay visible
+- **Monitor dropdown** — profile editor shows monitor nickname or hardware name instead of the internal type name
+
 ## [1.5.3] — 2026-06-26
 
 ### Fixed

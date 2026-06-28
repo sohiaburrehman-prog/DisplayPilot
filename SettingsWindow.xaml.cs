@@ -28,7 +28,12 @@ public partial class SettingsWindow : Window
     {
         public MonitorInfo Monitor { get; } = monitor;
         public string Label { get; } = label;
+
+        public override string ToString() => Label;
     }
+
+    private const double DefaultWindowHeight = 720;
+    private const double EditorWindowHeight = 900;
 
     private readonly DisplayManager _displayManager;
     private readonly SettingsService _settings;
@@ -221,7 +226,9 @@ public partial class SettingsWindow : Window
     {
         ProfileListPanel.Children.Clear();
         var profiles = _settings.Current.Profiles;
-        NoProfilesText.Visibility = profiles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoProfilesText.Visibility = profiles.Count == 0 && ProfileEditor.Visibility != Visibility.Visible
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         foreach (var profile in profiles)
         {
@@ -380,6 +387,7 @@ public partial class SettingsWindow : Window
         UpdateResolvedTargetVisibility();
         TargetMonitorCombo.SelectedIndex = TargetMonitorCombo.Items.Count > 0 ? 0 : -1;
         ProfileEditor.Visibility = Visibility.Visible;
+        UpdateProfileSectionLayout();
     }
 
     private IReadOnlyList<MonitorInfo> SafeGetMonitors()
@@ -421,6 +429,34 @@ public partial class SettingsWindow : Window
         }
 
         ProfileEditor.Visibility = Visibility.Visible;
+        UpdateProfileSectionLayout();
+    }
+
+    private void UpdateProfileSectionLayout()
+    {
+        var editing = ProfileEditor.Visibility == Visibility.Visible;
+
+        ProfilesScroll.Visibility = editing ? Visibility.Collapsed : Visibility.Visible;
+        NoProfilesText.Visibility = editing || _settings.Current.Profiles.Count > 0
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        if (editing)
+        {
+            var work = SystemParameters.WorkArea;
+            Height = Math.Min(EditorWindowHeight, work.Height - 32);
+            MaxHeight = work.Height;
+            if (Top + Height > work.Bottom)
+            {
+                Top = Math.Max(work.Top, work.Bottom - Height);
+            }
+
+            ProfileEditor.BringIntoView();
+            return;
+        }
+
+        Height = DefaultWindowHeight;
+        MaxHeight = double.PositiveInfinity;
     }
 
     private void PopulateMonitorCombo()
@@ -431,7 +467,7 @@ public partial class SettingsWindow : Window
                 .Select(m => new MonitorComboItem(m, MonitorDisplayHelper.GetNumberedName(m, _settings.Current)))
                 .ToList();
             TargetMonitorCombo.ItemsSource = items;
-            TargetMonitorCombo.DisplayMemberPath = nameof(MonitorComboItem.Label);
+            TargetMonitorCombo.DisplayMemberPath = "Label";
         }
         catch (Exception ex)
         {
@@ -623,6 +659,7 @@ public partial class SettingsWindow : Window
     {
         ProfileEditor.Visibility = Visibility.Collapsed;
         _editingProfileId = null;
+        UpdateProfileSectionLayout();
     }
 
     private void TestEditingProfile_Click(object sender, RoutedEventArgs e)
