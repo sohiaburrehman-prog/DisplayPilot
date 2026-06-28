@@ -47,7 +47,8 @@ public partial class LogViewerWindow : Window
     {
         try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{AppLogger.LogPath}\"")
+            var safePath = AppLogger.LogPath.Replace("\"", "");
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{safePath}\"")
             {
                 UseShellExecute = true,
             });
