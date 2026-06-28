@@ -1,5 +1,6 @@
 using System.Text.Json;
 
+using PrimaryDisplaySwap;
 using PrimaryDisplaySwap.Models;
 using PrimaryDisplaySwap.Services;
 
@@ -336,6 +337,17 @@ Check(ChangelogService.ShouldShowWhatsNew("1.4.1", "1.5.0"), "ShouldShowWhatsNew
 Check(!ChangelogService.ShouldShowWhatsNew("1.5.0", "1.5.0"), "ShouldShowWhatsNew false when versions match");
 Check(ChangelogService.ShouldShowWhatsNew("", "1.5.0"), "ShouldShowWhatsNew true when last seen empty");
 Check(!ChangelogService.ShouldShowWhatsNew("1.5.1", "1.5.0"), "ShouldShowWhatsNew false when downgraded");
+
+// ─────────────────── URL launch validation ───────────────────
+Console.WriteLine("\n== URL launch validation ==");
+Check(UrlLaunchHelper.IsAllowedWebUrl("https://github.com/sohiaburrehman-prog/DisplayPilot/releases"),
+    "HTTPS GitHub release URL allowed");
+Check(UrlLaunchHelper.IsAllowedWebUrl("http://example.com"), "HTTP URL allowed");
+Check(!UrlLaunchHelper.IsAllowedWebUrl("file:///C:/Windows/System32/cmd.exe"), "file:// blocked");
+Check(!UrlLaunchHelper.IsAllowedWebUrl("javascript:alert(1)"), "javascript: blocked");
+Check(!UrlLaunchHelper.IsAllowedWebUrl("ms-msdt:/id PCWDiagnostic /skip force"), "ms-msdt: blocked");
+Check(UrlLaunchHelper.IsAllowedWebOrMailUrl(AppInfo.SupportMailtoUri), "mailto help link allowed");
+Check(!UrlLaunchHelper.IsAllowedWebUrl(AppInfo.SupportMailtoUri), "mailto blocked for web-only helper");
 
 Console.WriteLine($"\n{passed} passed, {failed} failed");
 Environment.Exit(failed > 0 ? 1 : 0);

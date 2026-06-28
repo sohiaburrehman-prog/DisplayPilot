@@ -364,17 +364,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log($"Could not open URL '{url}': {ex.Message}");
-        }
-    }
+    private static void OpenUrl(string url) => UrlLaunchHelper.TryOpenWebUrl(url);
 
     private void SetStatus(string message) => StatusText.Text = message;
 

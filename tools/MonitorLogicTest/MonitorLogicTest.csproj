@@ -22,6 +22,7 @@
     <Compile Include="..\..\Models\AppSettings.cs" />
     <Compile Include="..\..\Native\DisplayInterop.cs" />
     <Compile Include="..\..\AppLogger.cs" />
+    <Compile Include="..\..\UrlLaunchHelper.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\CHANGELOG.md" Link="CHANGELOG.md" />

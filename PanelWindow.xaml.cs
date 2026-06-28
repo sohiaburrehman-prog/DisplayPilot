@@ -1038,13 +1038,8 @@ public partial class PanelWindow : Window
 
     private void HelpEmail_Click(object sender, RoutedEventArgs e)
     {
-        try
+        if (!UrlLaunchHelper.TryOpenWebOrMailUrl(AppInfo.SupportMailtoUri))
         {
-            Process.Start(new ProcessStartInfo(AppInfo.SupportMailtoUri) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log($"Could not open help email: {ex.Message}");
             StatusText.Text = $"Help: {AppInfo.SupportEmail}";
         }
     }
@@ -1218,17 +1213,7 @@ public partial class PanelWindow : Window
     private void ViewLog_Click(object sender, RoutedEventArgs e) =>
         ViewLogRequested?.Invoke(this, EventArgs.Empty);
 
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log($"Could not open URL '{url}': {ex.Message}");
-        }
-    }
+    private static void OpenUrl(string url) => UrlLaunchHelper.TryOpenWebUrl(url);
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

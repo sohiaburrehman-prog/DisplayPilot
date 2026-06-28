@@ -540,17 +540,7 @@ internal sealed class TrayService : IDisposable
         ShowFeedback($"DisplayPilot {info.LatestTag} is available. Right-click the tray icon to view it.");
     }
 
-    private static void OpenUrl(string url)
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log($"Tray: could not open URL '{url}': {ex.Message}");
-        }
-    }
+    private static void OpenUrl(string url) => UrlLaunchHelper.TryOpenWebUrl(url);
 
     /// <summary>Shows a throttled tray balloon (e.g. profile apply feedback).</summary>
     public void ShowBriefMessage(string message) => ShowFeedback(message);
