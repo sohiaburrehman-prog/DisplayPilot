@@ -50,6 +50,7 @@ public partial class PanelWindow : Window
 
     private bool _suppressStartupEvent;
     private bool _swapInProgress;
+    private bool _loadingModeEditors;
     private string _swapButtonIdleText = "Swap Displays";
     private readonly List<Action> _pendingModeLoads = [];
 
@@ -278,17 +279,26 @@ public partial class PanelWindow : Window
 
     private void LoadPendingModeEditors()
     {
-        if (PanelTabs.SelectedIndex != 1 || _pendingModeLoads.Count == 0)
+        if (PanelTabs.SelectedIndex != 1 || _pendingModeLoads.Count == 0 || _loadingModeEditors)
         {
             return;
         }
 
-        foreach (var load in _pendingModeLoads)
+        _loadingModeEditors = true;
+        try
         {
-            load();
-        }
+            var loads = _pendingModeLoads.ToArray();
+            _pendingModeLoads.Clear();
 
-        _pendingModeLoads.Clear();
+            foreach (var load in loads)
+            {
+                load();
+            }
+        }
+        finally
+        {
+            _loadingModeEditors = false;
+        }
     }
 
     /// <summary>Draws the physical monitor arrangement to scale, like the
@@ -565,6 +575,7 @@ public partial class PanelWindow : Window
         grid.Children.Add(applyButton);
 
         var loaded = false;
+        var suppressComboEvents = false;
         IReadOnlyList<DisplayMode> modes = Array.Empty<DisplayMode>();
 
         void PopulateRefreshRates()
@@ -579,9 +590,17 @@ public partial class PanelWindow : Window
                 .OrderByDescending(m => m.RefreshRateHz)
                 .ToList();
 
-            refreshCombo.ItemsSource = rates;
-            refreshCombo.DisplayMemberPath = nameof(DisplayMode.RefreshRateHz);
-            refreshCombo.SelectedItem = rates.FirstOrDefault();
+            suppressComboEvents = true;
+            try
+            {
+                refreshCombo.ItemsSource = rates;
+                refreshCombo.DisplayMemberPath = nameof(DisplayMode.RefreshRateHz);
+                refreshCombo.SelectedItem = rates.FirstOrDefault();
+            }
+            finally
+            {
+                suppressComboEvents = false;
+            }
         }
 
         void LoadModes()
@@ -600,24 +619,32 @@ public partial class PanelWindow : Window
                 .Select(g => g.First())
                 .ToList();
 
-            resolutionCombo.ItemsSource = resolutions;
-            resolutionCombo.DisplayMemberPath = nameof(DisplayMode.ResolutionLabel);
-            resolutionCombo.IsEnabled = resolutions.Count > 0;
-            refreshCombo.IsEnabled = resolutions.Count > 0;
-
-            if (current is not null)
+            suppressComboEvents = true;
+            try
             {
-                resolutionCombo.SelectedItem = resolutions
-                    .FirstOrDefault(m => m.Width == current.Width && m.Height == current.Height);
+                resolutionCombo.ItemsSource = resolutions;
+                resolutionCombo.DisplayMemberPath = nameof(DisplayMode.ResolutionLabel);
+                resolutionCombo.IsEnabled = resolutions.Count > 0;
+                refreshCombo.IsEnabled = resolutions.Count > 0;
+
+                if (current is not null)
+                {
+                    resolutionCombo.SelectedItem = resolutions
+                        .FirstOrDefault(m => m.Width == current.Width && m.Height == current.Height);
+                }
+
+                resolutionCombo.SelectedItem ??= resolutions.FirstOrDefault();
+                PopulateRefreshRates();
+
+                if (current is not null)
+                {
+                    refreshCombo.SelectedItem = (refreshCombo.ItemsSource as IEnumerable<DisplayMode>)?
+                        .FirstOrDefault(m => m.RefreshRateHz == current.RefreshRateHz) ?? refreshCombo.SelectedItem;
+                }
             }
-
-            resolutionCombo.SelectedItem ??= resolutions.FirstOrDefault();
-            PopulateRefreshRates();
-
-            if (current is not null)
+            finally
             {
-                refreshCombo.SelectedItem = (refreshCombo.ItemsSource as IEnumerable<DisplayMode>)?
-                    .FirstOrDefault(m => m.RefreshRateHz == current.RefreshRateHz) ?? refreshCombo.SelectedItem;
+                suppressComboEvents = false;
             }
 
             applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
@@ -627,11 +654,23 @@ public partial class PanelWindow : Window
 
         resolutionCombo.SelectionChanged += (_, _) =>
         {
+            if (suppressComboEvents)
+            {
+                return;
+            }
+
             PopulateRefreshRates();
             applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
         };
         refreshCombo.SelectionChanged += (_, _) =>
+        {
+            if (suppressComboEvents)
+            {
+                return;
+            }
+
             applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
+        };
 
         applyButton.Click += async (_, _) =>
         {

@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.6.1] — 2026-06-28
+
+### Fixed
+- **Panel crash** — opening the panel on the Advanced tab no longer throws "Collection was modified during enumeration" when resolution/refresh combos populate
+
 ## [1.6.0] — 2026-06-28
 
 ### Added
