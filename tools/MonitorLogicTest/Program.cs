@@ -349,5 +349,21 @@ Check(!UrlLaunchHelper.IsAllowedWebUrl("ms-msdt:/id PCWDiagnostic /skip force"),
 Check(UrlLaunchHelper.IsAllowedWebOrMailUrl(AppInfo.SupportMailtoUri), "mailto help link allowed");
 Check(!UrlLaunchHelper.IsAllowedWebUrl(AppInfo.SupportMailtoUri), "mailto blocked for web-only helper");
 
+// ─────────────────── Local app path validation ───────────────────
+Console.WriteLine("\n== Local app path validation ==");
+var appRoot = LocalAppLaunchHelper.AppDataRootPath;
+Check(LocalAppLaunchHelper.IsUnderAppDataRoot(AppLogger.LogPath),
+    "App log path is under app data root");
+Check(LocalAppLaunchHelper.IsUnderAppDataRoot(AppLogger.LogFolder),
+    "App log folder is under app data root");
+Check(!LocalAppLaunchHelper.IsUnderAppDataRoot(@"C:\Windows\System32\cmd.exe"),
+    "System path rejected");
+Check(!LocalAppLaunchHelper.IsUnderAppDataRoot($@"{appRoot}\..\Windows\System32"),
+    "Path traversal outside app data rejected");
+Check(!LocalAppLaunchHelper.IsUnderAppDataRoot($@"{appRoot}\log.txt"" /e,notepad"),
+    "Double-quote argument injection rejected");
+Check(!LocalAppLaunchHelper.IsUnderAppDataRoot(null), "Null path rejected");
+Check(!LocalAppLaunchHelper.IsUnderAppDataRoot(""), "Empty path rejected");
+
 Console.WriteLine($"\n{passed} passed, {failed} failed");
 Environment.Exit(failed > 0 ? 1 : 0);

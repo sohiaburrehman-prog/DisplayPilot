@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.6.4] — 2026-06-28
+
+### Security
+- **Activity log folder** — opening the log in Explorer validates paths stay under `%LOCALAPPDATA%\DisplayPilot\` before invoking `explorer.exe`, blocking argument injection and shell execution of untrusted locations
+
 ## [1.6.2] — 2026-06-28
 
 ### Fixed

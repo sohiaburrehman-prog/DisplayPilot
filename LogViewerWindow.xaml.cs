@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 
 using Clipboard = System.Windows.Clipboard;
@@ -45,25 +44,8 @@ public partial class LogViewerWindow : Window
 
     private void OpenFolder_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{AppLogger.LogPath}\"")
-            {
-                UseShellExecute = true,
-            });
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log($"Open log folder failed: {ex.Message}");
-            try
-            {
-                Process.Start(new ProcessStartInfo(AppLogger.LogFolder) { UseShellExecute = true });
-            }
-            catch
-            {
-                // Best effort.
-            }
-        }
+        if (!LocalAppLaunchHelper.TryOpenLogFileInExplorer(AppLogger.LogPath))
+            LocalAppLaunchHelper.TryOpenLogFolder(AppLogger.LogFolder);
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
