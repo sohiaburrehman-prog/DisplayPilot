@@ -8,7 +8,6 @@ using PrimaryDisplaySwap.Models;
 using Brush = System.Windows.Media.Brush;
 using Button = System.Windows.Controls.Button;
 using CheckBox = System.Windows.Controls.CheckBox;
-using FontFamily = System.Windows.Media.FontFamily;
 using MessageBox = System.Windows.MessageBox;
 
 namespace PrimaryDisplaySwap.Services;
@@ -28,7 +27,7 @@ internal static class ProfileUiHelper
         AppProfile profile,
         IReadOnlyList<MonitorInfo> monitors,
         AppSettings settings,
-        ResourceDictionary resources,
+        FrameworkElement host,
         Action<string, bool> onEnabledChanged,
         Action<string> onEdit,
         Action<string> onRemove,
@@ -36,8 +35,8 @@ internal static class ProfileUiHelper
     {
         var border = new Border
         {
-            Background = (Brush)resources["CardBrush"],
-            BorderBrush = (Brush)resources["HairlineBrush"],
+            Background = (Brush)host.FindResource("CardBrush"),
+            BorderBrush = (Brush)host.FindResource("HairlineBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(12, 10, 12, 10),
@@ -55,10 +54,9 @@ internal static class ProfileUiHelper
         info.Children.Add(new TextBlock
         {
             Text = profile.DisplayLabel,
-            FontFamily = (FontFamily)resources["UiFont"],
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush)resources["TextPrimaryBrush"],
+            Foreground = (Brush)host.FindResource("TextPrimaryBrush"),
         });
 
         var targetLabel = profile.TargetMonitorName;
@@ -85,9 +83,8 @@ internal static class ProfileUiHelper
         info.Children.Add(new TextBlock
         {
             Text = detail,
-            FontFamily = (FontFamily)resources["UiFont"],
             FontSize = 11,
-            Foreground = (Brush)resources["TextMutedBrush"],
+            Foreground = (Brush)host.FindResource("TextMutedBrush"),
             Margin = new Thickness(0, 2, 0, 0),
         });
         Grid.SetColumn(info, 0);
@@ -95,7 +92,7 @@ internal static class ProfileUiHelper
 
         var enabledToggle = new CheckBox
         {
-            Style = (Style)resources["DarkCheckBox"],
+            Style = (Style)host.FindResource("DarkCheckBox"),
             IsChecked = profile.Enabled,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 12, 0),
@@ -109,7 +106,7 @@ internal static class ProfileUiHelper
 
         var testButton = new Button
         {
-            Style = (Style)resources["MiniButton"],
+            Style = (Style)host.FindResource("MiniButton"),
             Content = "Test",
             Width = 58,
             Margin = new Thickness(0, 0, 8, 0),
@@ -122,7 +119,7 @@ internal static class ProfileUiHelper
 
         var editButton = new Button
         {
-            Style = (Style)resources["MiniButton"],
+            Style = (Style)host.FindResource("MiniButton"),
             Content = "Edit",
             Width = 64,
             VerticalAlignment = VerticalAlignment.Center,
@@ -133,7 +130,7 @@ internal static class ProfileUiHelper
 
         var removeButton = new Button
         {
-            Style = (Style)resources["MiniButton"],
+            Style = (Style)host.FindResource("MiniButton"),
             Content = "Delete",
             Width = 72,
             Margin = new Thickness(8, 0, 0, 0),

@@ -104,10 +104,21 @@ public sealed class SettingsService
     {
         var upgraded = Current.SchemaVersion < AppSettings.CurrentSchemaVersion;
         NormalizeSettings(Current, migrateLegacyInstall: true);
-        if (upgraded)
+
+        var restored = false;
+        if (Current.Profiles.Count == 0)
+        {
+            TryRestoreProfilesFromBackup();
+            restored = Current.Profiles.Count > 0;
+        }
+
+        if (upgraded || restored)
         {
             Save_NoLock();
-            AppLogger.Log($"Settings migrated to schema v{AppSettings.CurrentSchemaVersion}.");
+            if (upgraded)
+            {
+                AppLogger.Log($"Settings migrated to schema v{AppSettings.CurrentSchemaVersion}.");
+            }
         }
     }
 
@@ -242,6 +253,40 @@ public sealed class SettingsService
         Changed?.Invoke(this, EventArgs.Empty);
         AppLogger.Log($"Settings imported ({Current.Profiles.Count} profile(s)).");
         return true;
+    }
+
+    /// <summary>
+    /// When the live settings file has no profiles, merge profiles from
+    /// settings.json.bak (created on import or manual backup).
+    /// </summary>
+    private void TryRestoreProfilesFromBackup()
+    {
+        var backupPath = SettingsPath + ".bak";
+        if (!File.Exists(backupPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(backupPath);
+            var backup = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+            if (backup?.Profiles is not { Count: > 0 })
+            {
+                return;
+            }
+
+            Current.Profiles = backup.Profiles
+                .Where(p => p is not null)
+                .Select(p => p.Clone())
+                .ToList();
+            NormalizeSettings(Current, migrateLegacyInstall: false);
+            AppLogger.Log($"Restored {Current.Profiles.Count} profile(s) from settings.json.bak.");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Profile restore from backup failed: {ex.Message}");
+        }
     }
 
     private static void BackupCorruptFile()

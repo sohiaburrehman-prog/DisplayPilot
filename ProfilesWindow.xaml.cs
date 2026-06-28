@@ -101,7 +101,7 @@ public partial class ProfilesWindow : Window
                 profile,
                 monitors,
                 _settings.Current,
-                Resources,
+                this,
                 SetProfileEnabled,
                 BeginEditProfile,
                 RemoveProfile,

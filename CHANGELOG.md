@@ -2,6 +2,13 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.6.2] — 2026-06-28
+
+### Fixed
+- **Profile manager** — opening from Settings no longer fails silently; profile rows resolve theme resources correctly instead of throwing on `FontFamily`
+- **Missing profiles** — profiles were still on disk but invisible when the manager crashed; backup restore from `settings.json.bak` runs automatically when the live file has no profiles
+- **Settings UI** — hairline separator added below "Run setup wizard again" in Backup & restore
+
 ## [1.6.1] — 2026-06-28
 
 ### Fixed
