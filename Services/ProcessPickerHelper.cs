@@ -92,7 +92,7 @@ public static class ProcessPickerHelper
 
     public static IReadOnlyList<ProcessGroup> BuildGroupedRunningProcesses()
     {
-        var running = GetRunningProcessNames();
+        var running = ProcessWatcherService.GetRunningProcessNames();
         var launchers = LauncherCatalog.KnownLaunchers
             .Where(l => running.Contains(LauncherCatalog.Normalize(l)))
             .OrderBy(l => l, StringComparer.OrdinalIgnoreCase)
@@ -123,7 +123,7 @@ public static class ProcessPickerHelper
 
     public static IReadOnlyList<string> GetRunningExesExcludingLaunchers()
     {
-        var running = GetRunningProcessNames();
+        var running = ProcessWatcherService.GetRunningProcessNames();
         var launcherNorm = new HashSet<string>(
             LauncherCatalog.KnownLaunchers.Select(LauncherCatalog.Normalize),
             StringComparer.OrdinalIgnoreCase);
@@ -135,25 +135,4 @@ public static class ProcessPickerHelper
             .ToList();
     }
 
-    private static HashSet<string> GetRunningProcessNames()
-    {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var process in Process.GetProcesses())
-        {
-            try
-            {
-                names.Add(process.ProcessName);
-            }
-            catch
-            {
-                // Process exited between enumeration and read.
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-
-        return names;
-    }
 }
