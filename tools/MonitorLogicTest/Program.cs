@@ -210,6 +210,47 @@ Check(ProfileMatcher.IsProfileActive(launcherOnlyProfile, new HashSet<string>(St
 Check(ProfileMatcher.IsProfileActive(launcherOnlyProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "eldenring" }, "eldenring"),
     "Launcher-only profile matches detected child");
 
+// ─────────────────── Extended IsProfileActive edge cases ───────────────────
+Console.WriteLine("\n== Extended IsProfileActive edge cases ==");
+var runningNone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+var runningGame = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "game" };
+var runningOther = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "other" };
+var runningLauncher = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "steam" };
+
+Check(!ProfileMatcher.IsProfileActive(null!, runningGame), "Null profile returns false");
+Check(!ProfileMatcher.IsProfileActive(gameProfile, null!), "Null running processes returns false");
+Check(!ProfileMatcher.IsProfileActive(gameProfile, runningNone), "Empty running processes returns false");
+
+Check(ProfileMatcher.IsProfileActive(gameProfile, runningGame), "Standard profile matches exact running process");
+Check(!ProfileMatcher.IsProfileActive(gameProfile, runningOther), "Standard profile rejects non-matching process");
+
+var gameResolvedProfile = new AppProfile { ProcessName = "launcher", ResolvedTargetProcessName = "game.exe" };
+Check(ProfileMatcher.IsProfileActive(gameResolvedProfile, runningGame), "Non-launcher profile with resolved target matches target");
+
+var launcherNoChildProfile = new AppProfile
+{
+    ProcessName = "steam.exe",
+    MatchLauncherChildren = false
+};
+Check(ProfileMatcher.IsProfileActive(launcherNoChildProfile, runningLauncher), "Launcher (no target) matches just the launcher");
+Check(!ProfileMatcher.IsProfileActive(launcherNoChildProfile, runningGame), "Launcher (no target) rejects unrelated game");
+Check(!ProfileMatcher.IsProfileActive(launcherNoChildProfile, runningGame, "game"), "Detected child ignored when MatchLauncherChildren=false");
+
+var launcherResolvedProfile = new AppProfile
+{
+    ProcessName = "steam.exe",
+    ResolvedTargetProcessName = "game.exe"
+};
+Check(ProfileMatcher.IsProfileActive(launcherResolvedProfile, runningGame, "game"), "Detected child matches resolved target exactly");
+Check(!ProfileMatcher.IsProfileActive(launcherResolvedProfile, runningOther, "other"), "Detected child does not match resolved target");
+Check(!ProfileMatcher.IsProfileActive(launcherResolvedProfile, runningNone, "game"), "Detected child is target but NOT in running processes list");
+
+var launcherMatchChildProfile = new AppProfile { ProcessName = "steam.exe", MatchLauncherChildren = true };
+Check(ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningGame, "game"), "Detected child matched with MatchLauncherChildren=true");
+Check(!ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningGame, "other"), "Detected child not in running processes with MatchLauncherChildren=true");
+Check(!ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningNone, "game"), "Detected child not running with MatchLauncherChildren=true");
+Check(ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningLauncher, "game"), "Launcher matches itself even if child is not running");
+
 Check(ProcessPickerHelper.IsExcludedProcess("steam"), "Launcher processes excluded from child suggestions");
 Check(!ProcessPickerHelper.IsExcludedProcess("eldenring"), "Game processes not excluded from child suggestions");
 
@@ -296,7 +337,6 @@ Check(!SettingsService.TryParseImport("{ not json", out _, out var badErr) && ba
 // ─────────────────── Profile evaluation (test simulation) ───────────────────
 Console.WriteLine("\n== Profile evaluation (test simulation) ==");
 
-var runningGame = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "game" };
 var evalMatch = ProfileMatcher.Evaluate(gameProfile, runningGame, dual);
 Check(evalMatch.ProcessRunning && evalMatch.WouldMatch,
     "Evaluate: running process on connected target would match");
