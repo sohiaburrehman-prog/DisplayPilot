@@ -313,6 +313,25 @@ var evalMissingMonitor = ProfileMatcher.Evaluate(gameProfile, runningGame, singl
 Check(evalMissingMonitor.ProcessRunning && !evalMissingMonitor.WouldMatch && !evalMissingMonitor.TargetConnected,
     "Evaluate: process running but monitor missing => partial, no apply");
 
+var evalNull = ProfileMatcher.Evaluate(null!, runningGame, dual);
+Check(!evalNull.ProfileEnabled && evalNull.Summary == "Profile is missing.",
+    "Evaluate: null profile handled gracefully");
+
+var disabledProfile = gameProfile.Clone();
+disabledProfile.Enabled = false;
+var evalDisabled = ProfileMatcher.Evaluate(disabledProfile, runningGame, dual);
+Check(!evalDisabled.ProfileEnabled && !evalDisabled.WouldMatch,
+    "Evaluate: disabled profile returns no match");
+Check(evalDisabled.Summary.Contains("disabled", StringComparison.OrdinalIgnoreCase),
+    "Evaluate summary mentions disabled");
+
+var primaryProfile = new AppProfile { ProcessName = "game.exe", TargetMonitorName = "Dell U2720", TargetMonitorDeviceName = @"\\.\DISPLAY1" };
+var evalAlreadyPrimary = ProfileMatcher.Evaluate(primaryProfile, runningGame, dual);
+Check(evalAlreadyPrimary.ProcessRunning && evalAlreadyPrimary.TargetConnected && evalAlreadyPrimary.TargetIsPrimary && !evalAlreadyPrimary.WouldMatch,
+    "Evaluate: process running and target connected, but already primary => no match");
+Check(evalAlreadyPrimary.Summary.Contains("already primary", StringComparison.OrdinalIgnoreCase),
+    "Evaluate summary mentions already primary");
+
 // Corrupt JSON tolerance.
 AppSettings? corrupt = null;
 try { corrupt = JsonSerializer.Deserialize<AppSettings>("{ this is not valid json "); }
