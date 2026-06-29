@@ -180,6 +180,9 @@ Check(ProfileMatcher.ResolveTarget(deviceOnlyProfile, dual) is null,
 Check(ProfileMatcher.ProcessMatches(gameProfile, "game"), "ProcessMatches strips .exe from profile (game)");
 Check(ProfileMatcher.ProcessMatches(gameProfile, "GAME.EXE"), "ProcessMatches is case-insensitive and extension-insensitive");
 Check(!ProfileMatcher.ProcessMatches(gameProfile, "notgame"), "ProcessMatches rejects non-matching process");
+Check(!ProfileMatcher.ProcessMatches(gameProfile, ""), "ProcessMatches rejects empty process name");
+Check(!ProfileMatcher.ProcessMatches(null!, "game"), "ProcessMatches rejects null profile");
+Check(!ProfileMatcher.ProcessMatches(gameProfile, "  game.exe  "), "ProcessMatches ignores trailing whitespaces in process name");
 
 var launcherProfile = new AppProfile
 {
@@ -197,6 +200,11 @@ Check(ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(String
     "IsProfileActive matches detected launcher child");
 Check(!ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "notepad" }),
     "IsProfileActive rejects unrelated process");
+
+Check(ProfileMatcher.ProcessMatches(launcherProfile, "steam"), "ProcessMatches matches launcher process name");
+Check(ProfileMatcher.ProcessMatches(launcherProfile, "eldenring"), "ProcessMatches matches resolved target process name");
+Check(ProfileMatcher.ProcessMatches(launcherProfile, "ELDENRING.EXE"), "ProcessMatches matches resolved target process name case-insensitively");
+Check(!ProfileMatcher.ProcessMatches(launcherProfile, "notgame"), "ProcessMatches rejects unrelated process for launcher profile");
 
 var launcherOnlyProfile = new AppProfile
 {
