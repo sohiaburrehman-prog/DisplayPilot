@@ -177,6 +177,26 @@ Check(ProfileMatcher.ResolveTarget(deviceOnlyProfile, triple)?.DeviceName == @"\
 Check(ProfileMatcher.ResolveTarget(deviceOnlyProfile, dual) is null,
     "Profile device-name fallback skipped when not connected");
 
+// --- Additional edge cases for ResolveTarget ---
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
+Check(ProfileMatcher.ResolveTarget(null, dual) is null, "ResolveTarget handles null profile");
+Check(ProfileMatcher.ResolveTarget(gameProfile, null) is null, "ResolveTarget handles null monitor list");
+#pragma warning restore CS8625
+Check(ProfileMatcher.ResolveTarget(gameProfile, new List<MonitorInfo>()) is null, "ResolveTarget handles empty monitor list");
+
+var emptyProfile = new AppProfile { ProcessName = "app", TargetMonitorName = "", TargetMonitorDeviceName = "" };
+Check(ProfileMatcher.ResolveTarget(emptyProfile, dual) is null, "ResolveTarget handles profile with empty monitor names");
+
+var caseInsensitiveNameProfile = new AppProfile { ProcessName = "app", TargetMonitorName = "lg 27gl850", TargetMonitorDeviceName = "" };
+Check(ProfileMatcher.ResolveTarget(caseInsensitiveNameProfile, dual)?.Name == "LG 27GL850", "ResolveTarget matches friendly name case-insensitively");
+
+var caseInsensitiveDeviceProfile = new AppProfile { ProcessName = "app", TargetMonitorName = "", TargetMonitorDeviceName = @"\\.\display2" };
+Check(ProfileMatcher.ResolveTarget(caseInsensitiveDeviceProfile, dual)?.DeviceName == @"\\.\DISPLAY2", "ResolveTarget matches device name case-insensitively");
+
+var unknownMonitorProfile = new AppProfile { ProcessName = "app", TargetMonitorName = "Unknown Monitor", TargetMonitorDeviceName = @"\\.\DISPLAY99" };
+Check(ProfileMatcher.ResolveTarget(unknownMonitorProfile, dual) is null, "ResolveTarget returns null when neither name nor device match");
+// -----------------------------------------------
+
 Check(ProfileMatcher.ProcessMatches(gameProfile, "game"), "ProcessMatches strips .exe from profile (game)");
 Check(ProfileMatcher.ProcessMatches(gameProfile, "GAME.EXE"), "ProcessMatches is case-insensitive and extension-insensitive");
 Check(!ProfileMatcher.ProcessMatches(gameProfile, "notgame"), "ProcessMatches rejects non-matching process");
