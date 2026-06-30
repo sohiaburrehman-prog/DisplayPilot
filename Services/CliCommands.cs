@@ -18,6 +18,7 @@ public static class CliCommands
 
         CLI (headless — exits without opening the tray):
           --help               Show this help
+          --interactive-help   Launch the interactive help guide
           --list-monitors      Print connected monitors as JSON
           --set-primary <n>    Set primary by 0-based index or device name (\\.\DISPLAYn)
           --export-settings <path>
@@ -46,6 +47,12 @@ public static class CliCommands
                           string.Equals(a, "/?", StringComparison.OrdinalIgnoreCase)))
         {
             Console.Out.WriteLine(HelpText);
+            return true;
+        }
+
+        if (args.Any(a => string.Equals(a, "--interactive-help", StringComparison.OrdinalIgnoreCase)))
+        {
+            exitCode = RunInteractiveHelp();
             return true;
         }
 
@@ -243,6 +250,78 @@ public static class CliCommands
             WriteError(ex.Message);
             return 1;
         }
+    }
+
+    private static int RunInteractiveHelp()
+    {
+        Console.WriteLine("Welcome to the DisplayPilot Interactive Help!");
+        Console.WriteLine("===========================================");
+
+        while (true)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Please select a topic to learn more about:");
+            Console.WriteLine("  1. General Usage & Hotkeys");
+            Console.WriteLine("  2. Listing Monitors");
+            Console.WriteLine("  3. Setting the Primary Monitor");
+            Console.WriteLine("  4. Auto-Swap Profiles");
+            Console.WriteLine("  5. Exporting / Importing Settings");
+            Console.WriteLine("  0. Exit Help");
+            Console.Write("> ");
+
+            var input = Console.ReadLine();
+            Console.WriteLine();
+
+            if (input == null || input == "0")
+            {
+                Console.WriteLine("Exiting Interactive Help. Goodbye!");
+                break;
+            }
+            else if (input == "1")
+            {
+                Console.WriteLine("--- General Usage & Hotkeys ---");
+                Console.WriteLine("DisplayPilot runs in the system tray. You can double-click the tray icon");
+                Console.WriteLine("or press Ctrl+Shift+M (by default) to open the control panel.");
+                Console.WriteLine("From the control panel, you can set the primary monitor, change refresh rates,");
+                Console.WriteLine("and swap displays. You can rebind hotkeys in the Settings window.");
+            }
+            else if (input == "2")
+            {
+                Console.WriteLine("--- Listing Monitors ---");
+                Console.WriteLine("You can use `--list-monitors` to output a JSON array of all connected displays.");
+                Console.WriteLine("This includes their index, device name (e.g., \\\\.\\DISPLAY1), resolution,");
+                Console.WriteLine("refresh rate, and whether they are currently the primary display.");
+            }
+            else if (input == "3")
+            {
+                Console.WriteLine("--- Setting the Primary Monitor ---");
+                Console.WriteLine("Use `--set-primary <n>` to change the primary monitor from the command line.");
+                Console.WriteLine("You can pass the 0-based index (e.g., `--set-primary 1`) or the exact");
+                Console.WriteLine("device name (e.g., `--set-primary \\\\.\\DISPLAY2`).");
+            }
+            else if (input == "4")
+            {
+                Console.WriteLine("--- Auto-Swap Profiles ---");
+                Console.WriteLine("Auto-swap profiles allow you to automatically switch the primary monitor");
+                Console.WriteLine("when a specific application (like a game) starts. You can configure these");
+                Console.WriteLine("in the Profile Manager, accessible from the Settings window or tray menu.");
+                Console.WriteLine("You can also set it to restore the previous primary monitor when the game exits.");
+            }
+            else if (input == "5")
+            {
+                Console.WriteLine("--- Exporting / Importing Settings ---");
+                Console.WriteLine("Use `--export-settings <path>` to save your profiles, hotkeys, and preferences");
+                Console.WriteLine("to a JSON file.");
+                Console.WriteLine("Use `--import-settings <path>` to load them. DisplayPilot will automatically");
+                Console.WriteLine("create a backup of your existing settings before importing.");
+            }
+            else
+            {
+                Console.WriteLine("Invalid selection. Please enter a number between 0 and 5.");
+            }
+        }
+
+        return 0;
     }
 
     private static void WriteError(string message)

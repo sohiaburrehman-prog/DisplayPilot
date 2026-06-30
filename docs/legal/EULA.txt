@@ -1,6 +1,6 @@
 DISPLAYPILOT END USER LICENSE AGREEMENT (EULA)
 
-Last updated: June 2026
+Last updated: July 2026
 
 IMPORTANT — READ CAREFULLY: By installing, copying, or using DisplayPilot ("the Software"), you agree to this End User License Agreement. If you do not agree, do not install or use the Software.
 
