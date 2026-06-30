@@ -177,9 +177,31 @@ Check(ProfileMatcher.ResolveTarget(deviceOnlyProfile, triple)?.DeviceName == @"\
 Check(ProfileMatcher.ResolveTarget(deviceOnlyProfile, dual) is null,
     "Profile device-name fallback skipped when not connected");
 
+Console.WriteLine("\n== ResolveTarget edge cases ==");
+#pragma warning disable CS8625
+Check(ProfileMatcher.ResolveTarget(null, dual) is null, "ResolveTarget handles null profile");
+Check(ProfileMatcher.ResolveTarget(gameProfile, null) is null, "ResolveTarget handles null monitor list");
+#pragma warning restore CS8625
+Check(ProfileMatcher.ResolveTarget(gameProfile, new List<MonitorInfo>()) is null, "ResolveTarget handles empty monitor list");
+
+var emptyProfile = new AppProfile { ProcessName = "app", TargetMonitorName = "", TargetMonitorDeviceName = "" };
+Check(ProfileMatcher.ResolveTarget(emptyProfile, dual) is null, "ResolveTarget handles profile with empty monitor names");
+
+var caseInsensitiveNameProfile = new AppProfile { ProcessName = "app", TargetMonitorName = "lg 27gl850", TargetMonitorDeviceName = "" };
+Check(ProfileMatcher.ResolveTarget(caseInsensitiveNameProfile, dual)?.Name == "LG 27GL850", "ResolveTarget matches friendly name case-insensitively");
+
+var caseInsensitiveDeviceProfile = new AppProfile { ProcessName = "app", TargetMonitorName = "", TargetMonitorDeviceName = @"\\.\display2" };
+Check(ProfileMatcher.ResolveTarget(caseInsensitiveDeviceProfile, dual)?.DeviceName == @"\\.\DISPLAY2", "ResolveTarget matches device name case-insensitively");
+
+var unknownMonitorProfile = new AppProfile { ProcessName = "app", TargetMonitorName = "Unknown Monitor", TargetMonitorDeviceName = @"\\.\DISPLAY99" };
+Check(ProfileMatcher.ResolveTarget(unknownMonitorProfile, dual) is null, "ResolveTarget returns null when neither name nor device match");
+
 Check(ProfileMatcher.ProcessMatches(gameProfile, "game"), "ProcessMatches strips .exe from profile (game)");
 Check(ProfileMatcher.ProcessMatches(gameProfile, "GAME.EXE"), "ProcessMatches is case-insensitive and extension-insensitive");
 Check(!ProfileMatcher.ProcessMatches(gameProfile, "notgame"), "ProcessMatches rejects non-matching process");
+Check(!ProfileMatcher.ProcessMatches(gameProfile, ""), "ProcessMatches rejects empty process name");
+Check(!ProfileMatcher.ProcessMatches(null!, "game"), "ProcessMatches rejects null profile");
+Check(!ProfileMatcher.ProcessMatches(gameProfile, "  game.exe  "), "ProcessMatches ignores trailing whitespaces in process name");
 
 var launcherProfile = new AppProfile
 {
@@ -198,6 +220,11 @@ Check(ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(String
 Check(!ProfileMatcher.IsProfileActive(launcherProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "notepad" }),
     "IsProfileActive rejects unrelated process");
 
+Check(ProfileMatcher.ProcessMatches(launcherProfile, "steam"), "ProcessMatches matches launcher process name");
+Check(ProfileMatcher.ProcessMatches(launcherProfile, "eldenring"), "ProcessMatches matches resolved target process name");
+Check(ProfileMatcher.ProcessMatches(launcherProfile, "ELDENRING.EXE"), "ProcessMatches matches resolved target process name case-insensitively");
+Check(!ProfileMatcher.ProcessMatches(launcherProfile, "notgame"), "ProcessMatches rejects unrelated process for launcher profile");
+
 var launcherOnlyProfile = new AppProfile
 {
     ProcessName = "steam.exe",
@@ -209,6 +236,46 @@ Check(ProfileMatcher.IsProfileActive(launcherOnlyProfile, new HashSet<string>(St
     "Launcher-only profile matches launcher process");
 Check(ProfileMatcher.IsProfileActive(launcherOnlyProfile, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "eldenring" }, "eldenring"),
     "Launcher-only profile matches detected child");
+
+Console.WriteLine("\n== Extended IsProfileActive edge cases ==");
+var runningNone = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+var runningGame = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "game" };
+var runningOther = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "other" };
+var runningLauncher = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "steam" };
+
+Check(!ProfileMatcher.IsProfileActive(null!, runningGame), "Null profile returns false");
+Check(!ProfileMatcher.IsProfileActive(gameProfile, null!), "Null running processes returns false");
+Check(!ProfileMatcher.IsProfileActive(gameProfile, runningNone), "Empty running processes returns false");
+
+Check(ProfileMatcher.IsProfileActive(gameProfile, runningGame), "Standard profile matches exact running process");
+Check(!ProfileMatcher.IsProfileActive(gameProfile, runningOther), "Standard profile rejects non-matching process");
+
+var gameResolvedProfile = new AppProfile { ProcessName = "launcher", ResolvedTargetProcessName = "game.exe" };
+Check(ProfileMatcher.IsProfileActive(gameResolvedProfile, runningGame), "Non-launcher profile with resolved target matches target");
+
+var launcherNoChildProfile = new AppProfile
+{
+    ProcessName = "steam.exe",
+    MatchLauncherChildren = false
+};
+Check(ProfileMatcher.IsProfileActive(launcherNoChildProfile, runningLauncher), "Launcher (no target) matches just the launcher");
+Check(!ProfileMatcher.IsProfileActive(launcherNoChildProfile, runningGame), "Launcher (no target) rejects unrelated game");
+Check(!ProfileMatcher.IsProfileActive(launcherNoChildProfile, runningGame, "game"), "Detected child ignored when MatchLauncherChildren=false");
+
+var launcherResolvedProfile = new AppProfile
+{
+    ProcessName = "steam.exe",
+    ResolvedTargetProcessName = "game.exe"
+};
+Check(ProfileMatcher.IsProfileActive(launcherResolvedProfile, runningGame, "game"), "Detected child matches resolved target exactly");
+Check(!ProfileMatcher.IsProfileActive(launcherResolvedProfile, runningOther, "other"), "Detected child does not match resolved target");
+Check(!ProfileMatcher.IsProfileActive(launcherResolvedProfile, runningNone, "game"), "Detected child is target but NOT in running processes list");
+
+var launcherMatchChildProfile = new AppProfile { ProcessName = "steam.exe", MatchLauncherChildren = true };
+Check(ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningGame, "game"), "Detected child matched with MatchLauncherChildren=true");
+Check(!ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningGame, "other"), "Detected child not in running processes with MatchLauncherChildren=true");
+Check(!ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningNone, "game"), "Detected child not running with MatchLauncherChildren=true");
+Check(ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningLauncher, "game"), "Launcher matches itself even if child is not running");
 
 Check(ProcessPickerHelper.IsExcludedProcess("steam"), "Launcher processes excluded from child suggestions");
 Check(!ProcessPickerHelper.IsExcludedProcess("eldenring"), "Game processes not excluded from child suggestions");
@@ -296,7 +363,6 @@ Check(!SettingsService.TryParseImport("{ not json", out _, out var badErr) && ba
 // ─────────────────── Profile evaluation (test simulation) ───────────────────
 Console.WriteLine("\n== Profile evaluation (test simulation) ==");
 
-var runningGame = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "game" };
 var evalMatch = ProfileMatcher.Evaluate(gameProfile, runningGame, dual);
 Check(evalMatch.ProcessRunning && evalMatch.WouldMatch,
     "Evaluate: running process on connected target would match");
@@ -312,6 +378,25 @@ Check(evalNoProcess.Summary.Contains("No match", StringComparison.OrdinalIgnoreC
 var evalMissingMonitor = ProfileMatcher.Evaluate(gameProfile, runningGame, single);
 Check(evalMissingMonitor.ProcessRunning && !evalMissingMonitor.WouldMatch && !evalMissingMonitor.TargetConnected,
     "Evaluate: process running but monitor missing => partial, no apply");
+
+var evalNull = ProfileMatcher.Evaluate(null!, runningGame, dual);
+Check(!evalNull.ProfileEnabled && evalNull.Summary == "Profile is missing.",
+    "Evaluate: null profile handled gracefully");
+
+var disabledProfile = gameProfile.Clone();
+disabledProfile.Enabled = false;
+var evalDisabled = ProfileMatcher.Evaluate(disabledProfile, runningGame, dual);
+Check(!evalDisabled.ProfileEnabled && !evalDisabled.WouldMatch,
+    "Evaluate: disabled profile returns no match");
+Check(evalDisabled.Summary.Contains("disabled", StringComparison.OrdinalIgnoreCase),
+    "Evaluate summary mentions disabled");
+
+var primaryProfile = new AppProfile { ProcessName = "game.exe", TargetMonitorName = "Dell U2720", TargetMonitorDeviceName = @"\\.\DISPLAY1" };
+var evalAlreadyPrimary = ProfileMatcher.Evaluate(primaryProfile, runningGame, dual);
+Check(evalAlreadyPrimary.ProcessRunning && evalAlreadyPrimary.TargetConnected && evalAlreadyPrimary.TargetIsPrimary && !evalAlreadyPrimary.WouldMatch,
+    "Evaluate: process running and target connected, but already primary => no match");
+Check(evalAlreadyPrimary.Summary.Contains("already primary", StringComparison.OrdinalIgnoreCase),
+    "Evaluate summary mentions already primary");
 
 // Corrupt JSON tolerance.
 AppSettings? corrupt = null;

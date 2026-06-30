@@ -115,7 +115,9 @@ public partial class ProfileEditorControl : UserControl
             RunningProcessCombo.Items.Clear();
             RunningProcessCombo.Items.Add("Pick process…");
 
-            foreach (var group in ProcessPickerHelper.BuildGroupedRunningProcesses())
+            var groupedProcesses = ProcessPickerHelper.BuildGroupedRunningProcesses();
+
+            foreach (var group in groupedProcesses)
             {
                 if (group.Items.Count == 0)
                 {
@@ -136,7 +138,7 @@ public partial class ProfileEditorControl : UserControl
                 }
             }
 
-            var running = ProcessPickerHelper.BuildGroupedRunningProcesses()
+            var running = groupedProcesses
                 .SelectMany(g => g.Items)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var notRunningLaunchers = LauncherCatalog.KnownLaunchers

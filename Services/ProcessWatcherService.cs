@@ -279,9 +279,11 @@ public sealed class ProcessWatcherService : IDisposable
 
     public static HashSet<string> GetRunningProcessNames()
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var process in Process.GetProcesses())
+        var processes = Process.GetProcesses();
+        var names = new HashSet<string>(processes.Length, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < processes.Length; i++)
         {
+            var process = processes[i];
             try
             {
                 names.Add(process.ProcessName);
