@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.0] — 2026-07-02
+
+### Added
+- **Interactive Help** — new `--interactive-help` command line argument for exploring help topics directly from the terminal.
+
 ## [1.6.4] — 2026-06-28
 
 ### Security
