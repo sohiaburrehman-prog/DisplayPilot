@@ -78,7 +78,7 @@
                             <StackPanel x:Name="ProfileListPanel" />
 
                             <TextBlock x:Name="NoProfilesText"
-                                       Text="No profiles yet."
+                                       Text="No profiles yet. Add one to auto-swap your primary monitor when a game or launcher starts."
                                        FontSize="11.5" TextWrapping="Wrap"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        Margin="2,2,0,8" />
@@ -97,15 +97,16 @@
                                     Width="140"
                                     Margin="0,0,0,8"
                                     Click="AddProfile_Click" />
-
-                            <Border x:Name="ProfileEditorPanel"
-                                    Visibility="Collapsed"
-                                    Background="{StaticResource CardBrush}"
-                                    BorderBrush="{StaticResource AccentBrush}"
-                                    BorderThickness="1" CornerRadius="10"
-                                    Padding="14,12" />
                         </StackPanel>
                     </ScrollViewer>
+
+                    <Border x:Name="ProfileEditorPanel"
+                            Grid.Row="2"
+                            Visibility="Collapsed"
+                            Background="{StaticResource CardBrush}"
+                            BorderBrush="{StaticResource AccentBrush}"
+                            BorderThickness="1" CornerRadius="10"
+                            Padding="14,12" />
                 </Grid>
             </TabItem>
 

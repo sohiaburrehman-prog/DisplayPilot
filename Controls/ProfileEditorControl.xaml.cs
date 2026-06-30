@@ -20,6 +20,7 @@ public partial class ProfileEditorControl : UserControl
     private readonly DisplayManager _displayManager;
     private readonly SettingsService _settings;
     private string? _editingProfileId;
+    private bool _isEditing;
 
     public ProfileEditorControl(DisplayManager displayManager, SettingsService settings)
     {
@@ -27,11 +28,12 @@ public partial class ProfileEditorControl : UserControl
         _settings = settings;
 
         InitializeComponent();
+        Visibility = Visibility.Collapsed;
 
         ProcessNameBox.TextChanged += (_, _) => UpdateResolvedTargetVisibility();
     }
 
-    public bool IsEditing => Visibility == Visibility.Visible;
+    public bool IsEditing => _isEditing;
 
     public void BeginNew()
     {
@@ -44,6 +46,7 @@ public partial class ProfileEditorControl : UserControl
         PopulateMonitorCombo();
         UpdateResolvedTargetVisibility();
         TargetMonitorCombo.SelectedIndex = TargetMonitorCombo.Items.Count > 0 ? 0 : -1;
+        _isEditing = true;
         Visibility = Visibility.Visible;
     }
 
@@ -73,11 +76,13 @@ public partial class ProfileEditorControl : UserControl
             TargetMonitorCombo.SelectedItem = match;
         }
 
+        _isEditing = true;
         Visibility = Visibility.Visible;
     }
 
     public void HideEditor()
     {
+        _isEditing = false;
         Visibility = Visibility.Collapsed;
         _editingProfileId = null;
     }

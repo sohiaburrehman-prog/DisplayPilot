@@ -2,6 +2,12 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.1] — 2026-06-30
+
+### Fixed
+- **Profile manager empty state** — "No profiles yet" message and list content now appear when the editor is closed; `IsEditing` no longer treated the hidden editor control as active
+- **Add profile** — editor panel moved outside the profiles scroll area so "+ Add profile" shows the inline editor instead of collapsing the entire tab content
+
 ## [1.7.0] — 2026-06-30
 
 ### Added
