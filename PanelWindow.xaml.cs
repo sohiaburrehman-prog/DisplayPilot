@@ -408,7 +408,7 @@ public partial class PanelWindow : Window
 
             if (!monitor.IsPrimary)
             {
-                screen.MouseLeftButtonUp += async (_, _) => await SetPrimaryAsync(index, displayName);
+                WireSetPrimaryActivation(screen, index, displayName);
             }
 
             screen.MouseEnter += (s, _) =>
@@ -489,9 +489,14 @@ public partial class PanelWindow : Window
         {
             Foreground = (Brush)FindResource("AccentHoverBrush"),
             TextDecorations = null,
+            Focusable = false,
         };
         hyperlink.Inlines.Add("Rename");
-        hyperlink.Click += (_, _) => ShowRenameDialog(monitor);
+        hyperlink.Click += (_, e) =>
+        {
+            e.Handled = true;
+            ShowRenameDialog(monitor);
+        };
         link.Inlines.Add(hyperlink);
         return link;
     }
@@ -852,10 +857,63 @@ public partial class PanelWindow : Window
         {
             var index = monitor.Index;
             var displayName = MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current);
-            card.Click += async (_, _) => await SetPrimaryAsync(index, displayName);
+            WireSetPrimaryActivation(card, index, displayName);
         }
 
         return card;
+    }
+
+    /// <summary>
+    /// Routes single- and double-clicks on monitor cards/map tiles to set-primary,
+    /// while leaving the inline Rename hyperlink interactive.
+    /// </summary>
+    private void WireSetPrimaryActivation(FrameworkElement target, int monitorIndex, string monitorName)
+    {
+        async void Activate(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton != MouseButton.Left || IsRenameClick(e.OriginalSource))
+            {
+                return;
+            }
+
+            if (_swapInProgress)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            await SetPrimaryAsync(monitorIndex, monitorName);
+        }
+
+        target.PreviewMouseLeftButtonUp += Activate;
+        target.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (e.ClickCount < 2 || e.ChangedButton != MouseButton.Left || IsRenameClick(e.OriginalSource))
+            {
+                return;
+            }
+
+            if (_swapInProgress)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            _ = SetPrimaryAsync(monitorIndex, monitorName);
+        };
+    }
+
+    private static bool IsRenameClick(object? source)
+    {
+        for (var node = source as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is System.Windows.Documents.Hyperlink)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private UIElement BuildMonitorGlyph(MonitorInfo monitor)

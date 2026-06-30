@@ -48,13 +48,15 @@ internal sealed class TrayService : IDisposable
         {
             Renderer = new DarkMenuRenderer(),
             ShowImageMargin = false,
-            Font = AppTheme.BodyFont,
+            Font = AppTheme.MenuBodyFont,
             Padding = new Padding(6, 8, 6, 8),
             AutoSize = true,
         };
         _menu.Opening += (_, _) =>
         {
             TrayUiState.TrayMenuOpen = true;
+            AppTheme.RefreshMenuFonts();
+            _menu.Font = AppTheme.MenuBodyFont;
             RefreshMenu();
         };
         _menu.Closed += (_, _) => TrayUiState.TrayMenuOpen = false;
@@ -89,16 +91,14 @@ internal sealed class TrayService : IDisposable
 
         if (_updateInfo is not null)
         {
-            var updateItem = new ToolStripMenuItem($"⬇  Update available — {_updateInfo.LatestTag}")
-            {
-                Tag = TrayMenuTags.Swap,
-            };
+            var updateItem = CreateActionItem($"⬇  Update available — {_updateInfo.LatestTag}");
+            updateItem.Tag = TrayMenuTags.Swap;
             updateItem.Click += (_, _) => OpenUrl(_updateInfo.ReleaseUrl);
             _menu.Items.Add(updateItem);
             _menu.Items.Add(new ToolStripSeparator());
         }
 
-        var openItem = new ToolStripMenuItem("&Open control panel");
+        var openItem = CreateActionItem("&Open control panel");
         openItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(openItem);
 
@@ -150,32 +150,30 @@ internal sealed class TrayService : IDisposable
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        var settingsItem = new ToolStripMenuItem("&Settings…");
+        var settingsItem = CreateActionItem("&Settings…");
         settingsItem.Click += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(settingsItem);
 
-        var logItem = new ToolStripMenuItem("View &activity log…");
+        var logItem = CreateActionItem("View &activity log…");
         logItem.Click += (_, _) => ViewLogRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(logItem);
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        var startupItem = new ToolStripMenuItem("Start with &Windows")
-        {
-            Checked = _startupService.IsEnabled,
-        };
+        var startupItem = CreateActionItem("Start with &Windows");
+        startupItem.Checked = _startupService.IsEnabled;
         startupItem.Click += (_, _) => ToggleStartup(startupItem);
         _menu.Items.Add(startupItem);
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        var legalMenu = new ToolStripMenuItem("Legal && policies");
+        var legalMenu = CreateActionItem("Legal && policies");
         legalMenu.DropDown = BuildLegalSubmenu();
         _menu.Items.Add(legalMenu);
 
         _menu.Items.Add(new ToolStripSeparator());
 
-        var exitItem = new ToolStripMenuItem("E&xit DisplayPilot");
+        var exitItem = CreateActionItem("E&xit DisplayPilot");
         exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(exitItem);
     }
@@ -200,7 +198,7 @@ internal sealed class TrayService : IDisposable
 
         if (monitors.Count >= 2)
         {
-            var cyclePrimaryItem = new ToolStripMenuItem("Cycle &primary display");
+            var cyclePrimaryItem = CreateActionItem("Cycle &primary display");
             cyclePrimaryItem.Click += (_, _) => CyclePrimaryRequested?.Invoke(this, EventArgs.Empty);
             _menu.Items.Add(cyclePrimaryItem);
         }
@@ -208,7 +206,7 @@ internal sealed class TrayService : IDisposable
         var lastProfile = GetLastUsedProfile();
         if (lastProfile is not null)
         {
-            var reapplyItem = new ToolStripMenuItem($"Re-apply last profile ({lastProfile.DisplayLabel})");
+            var reapplyItem = CreateActionItem($"Re-apply last profile ({lastProfile.DisplayLabel})");
             reapplyItem.Click += (_, _) => ApplyProfile(lastProfile);
             _menu.Items.Add(reapplyItem);
         }
@@ -220,11 +218,11 @@ internal sealed class TrayService : IDisposable
             return;
         }
 
-        var applyMenu = new ToolStripMenuItem("Apply &profile");
+        var applyMenu = CreateActionItem("Apply &profile");
         foreach (var profile in enabledProfiles)
         {
             var captured = profile;
-            var item = new ToolStripMenuItem(captured.DisplayLabel);
+            var item = CreateActionItem(captured.DisplayLabel);
             item.Click += (_, _) => ApplyProfile(captured);
             applyMenu.DropDownItems.Add(item);
         }
@@ -283,7 +281,7 @@ internal sealed class TrayService : IDisposable
         _menu.Items.Add(CreateLabel(status, TrayMenuTags.Status));
 
         var label = profiles.Count == 0 ? "&Add game profile…" : "&Manage game profiles…";
-        var profilesItem = new ToolStripMenuItem(label);
+        var profilesItem = CreateActionItem(label);
         profilesItem.Click += (_, _) => ProfilesRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(profilesItem);
     }
@@ -296,12 +294,10 @@ internal sealed class TrayService : IDisposable
         var otherName = MonitorDisplayHelper.GetDisplayName(other, _settings.Current);
         var swapText = $"⇄  Swap: {primary.Index + 1} ↔ {other.Index + 1}  ({primaryName} ↔ {otherName})";
 
-        var swapItem = new ToolStripMenuItem(swapText)
-        {
-            Tag = TrayMenuTags.Swap,
-            Padding = new Padding(8, 6, 8, 6),
-            ShortcutKeyDisplayString = "S",
-        };
+        var swapItem = CreateActionItem(swapText);
+        swapItem.Tag = TrayMenuTags.Swap;
+        swapItem.Padding = new Padding(8, 6, 8, 6);
+        swapItem.ShortcutKeyDisplayString = "S";
         swapItem.Click += (_, _) => SwapPrimary();
         _menu.Items.Add(swapItem);
     }
@@ -314,10 +310,8 @@ internal sealed class TrayService : IDisposable
             label += "  —  click to set primary";
         }
 
-        var item = new ToolStripMenuItem(label)
-        {
-            Enabled = !monitor.IsPrimary,
-        };
+        var item = CreateActionItem(label);
+        item.Enabled = !monitor.IsPrimary;
 
         if (!monitor.IsPrimary)
         {
@@ -335,27 +329,27 @@ internal sealed class TrayService : IDisposable
         {
             Renderer = new DarkMenuRenderer(),
             ShowImageMargin = false,
-            Font = AppTheme.BodyFont,
+            Font = AppTheme.MenuBodyFont,
             Padding = new Padding(4, 6, 4, 6),
         };
 
-        var eulaItem = new ToolStripMenuItem("End User License Agreement");
+        var eulaItem = CreateActionItem("End User License Agreement");
         eulaItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.EulaTitle, LegalDocuments.LoadEula);
         menu.Items.Add(eulaItem);
 
-        var privacyItem = new ToolStripMenuItem("Privacy Policy");
+        var privacyItem = CreateActionItem("Privacy Policy");
         privacyItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.PrivacyTitle, LegalDocuments.LoadPrivacyPolicy);
         menu.Items.Add(privacyItem);
 
         menu.Items.Add(new ToolStripSeparator());
 
-        var helpItem = new ToolStripMenuItem("Help && support");
+        var helpItem = CreateActionItem("Help && support");
         helpItem.Click += (_, _) => ShowPolicySafely("Help & support", () => AppInfo.BuildHelpText());
         menu.Items.Add(helpItem);
 
         menu.Items.Add(new ToolStripSeparator());
 
-        var aboutItem = new ToolStripMenuItem("About DisplayPilot");
+        var aboutItem = CreateActionItem("About DisplayPilot");
         aboutItem.Click += (_, _) => ShowPolicy(
             "About",
             BuildAboutText(),
@@ -390,6 +384,7 @@ internal sealed class TrayService : IDisposable
         {
             Enabled = false,
             Tag = tag,
+            Font = AppTheme.MenuBodyFont,
             Padding = tag switch
             {
                 TrayMenuTags.Title => new Padding(8, 6, 8, 2),
@@ -403,7 +398,16 @@ internal sealed class TrayService : IDisposable
 
     private static ToolStripMenuItem CreateDisabled(string text)
     {
-        return new ToolStripMenuItem(text) { Enabled = false };
+        return new ToolStripMenuItem(text)
+        {
+            Enabled = false,
+            Font = AppTheme.MenuBodyFont,
+        };
+    }
+
+    private static ToolStripMenuItem CreateActionItem(string text)
+    {
+        return new ToolStripMenuItem(text) { Font = AppTheme.MenuBodyFont };
     }
 
     private static void ShowPolicySafely(string title, Func<string> loadBody)

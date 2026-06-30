@@ -55,6 +55,100 @@ internal static class AppTheme
     public static readonly Font BadgeFont = new(UiFontFamily, 6.75F, FontStyle.Bold, GraphicsUnit.Point);
     public static readonly Font SectionFont = new(UiFontFamily, 7.5F, FontStyle.Bold, GraphicsUnit.Point);
 
+    // Tray context menus scale these per-monitor (PerMonitorV2) instead of using
+    // the fixed 96-DPI legacy sizes above.
+    private static int _menuFontDpi;
+    private static Font? _menuTitleFont;
+    private static Font? _menuSubtitleFont;
+    private static Font? _menuBodyFont;
+    private static Font? _menuBodySemiboldFont;
+    private static Font? _menuButtonFont;
+    private static Font? _menuCaptionFont;
+    private static Font? _menuSectionFont;
+
+    public static Font MenuTitleFont => _menuTitleFont ?? BodyFont;
+    public static Font MenuSubtitleFont => _menuSubtitleFont ?? CaptionFont;
+    public static Font MenuBodyFont => _menuBodyFont ?? BodyFont;
+    public static Font MenuBodySemiboldFont => _menuBodySemiboldFont ?? BodySemiboldFont;
+    public static Font MenuButtonFont => _menuButtonFont ?? ButtonFont;
+    public static Font MenuCaptionFont => _menuCaptionFont ?? CaptionFont;
+    public static Font MenuSectionFont => _menuSectionFont ?? SectionFont;
+
+    /// <summary>Rebuilds tray-menu fonts for the monitor DPI hosting the cursor.</summary>
+    public static void RefreshMenuFonts()
+    {
+        var dpi = GetCursorMonitorDpi();
+        if (dpi == _menuFontDpi && _menuBodyFont is not null)
+        {
+            return;
+        }
+
+        DisposeMenuFonts();
+        _menuFontDpi = dpi;
+        var scale = dpi / 96f;
+        _menuTitleFont = CreateScaledFont(10.25F, FontStyle.Bold, scale);
+        _menuSubtitleFont = CreateScaledFont(7.5F, FontStyle.Regular, scale);
+        _menuBodyFont = CreateScaledFont(9.25F, FontStyle.Regular, scale);
+        _menuBodySemiboldFont = CreateScaledFont(9.25F, FontStyle.Bold, scale);
+        _menuButtonFont = CreateScaledFont(9F, FontStyle.Bold, scale);
+        _menuCaptionFont = CreateScaledFont(8F, FontStyle.Regular, scale);
+        _menuSectionFont = CreateScaledFont(7.5F, FontStyle.Bold, scale);
+    }
+
+    private static Font CreateScaledFont(float points, FontStyle style, float scale) =>
+        new(UiFontFamily, points * scale, style, GraphicsUnit.Point);
+
+    private static int GetCursorMonitorDpi()
+    {
+        var pos = System.Windows.Forms.Cursor.Position;
+        var pt = new PointNative { X = pos.X, Y = pos.Y };
+        var monitor = MonitorFromPoint(pt, MonitorDefaultToNearest);
+        if (monitor != IntPtr.Zero &&
+            GetDpiForMonitor(monitor, MdtEffectiveDpi, out var dpiX, out _) == 0 &&
+            dpiX > 0)
+        {
+            return (int)dpiX;
+        }
+
+        using var g = Graphics.FromHwnd(IntPtr.Zero);
+        return (int)g.DpiY;
+    }
+
+    private const int MdtEffectiveDpi = 0;
+    private const uint MonitorDefaultToNearest = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PointNative
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(PointNative pt, uint dwFlags);
+
+    [DllImport("Shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    private static void DisposeMenuFonts()
+    {
+        _menuTitleFont?.Dispose();
+        _menuSubtitleFont?.Dispose();
+        _menuBodyFont?.Dispose();
+        _menuBodySemiboldFont?.Dispose();
+        _menuButtonFont?.Dispose();
+        _menuCaptionFont?.Dispose();
+        _menuSectionFont?.Dispose();
+
+        _menuTitleFont = null;
+        _menuSubtitleFont = null;
+        _menuBodyFont = null;
+        _menuBodySemiboldFont = null;
+        _menuButtonFont = null;
+        _menuCaptionFont = null;
+        _menuSectionFont = null;
+    }
+
     public static string AppVersion
     {
         get

@@ -2,6 +2,12 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.3] — 2026-07-01
+
+### Fixed
+- **Monitor card clicks on 4K/high-DPI** — single- and double-click on monitor cards and the arrangement map now reliably set a display as primary; inline Rename links no longer steal clicks from the card button
+- **Tray context menu text on 4K** — menu fonts scale with the monitor DPI (PerMonitorV2) so all items, including action entries and section labels, render at a readable size on 150%/200% scaling
+
 ## [1.7.2] — 2026-07-01
 
 ### Fixed

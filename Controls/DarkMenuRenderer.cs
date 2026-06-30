@@ -42,11 +42,11 @@ internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
 
             e.TextFont = tag switch
             {
-                TrayMenuTags.Section => AppTheme.SectionFont,
-                TrayMenuTags.Title => AppTheme.TitleFont,
-                TrayMenuTags.Subtitle => AppTheme.CaptionFont,
-                TrayMenuTags.Status => AppTheme.CaptionFont,
-                TrayMenuTags.Swap => AppTheme.ButtonFont,
+                TrayMenuTags.Section => AppTheme.MenuSectionFont,
+                TrayMenuTags.Title => AppTheme.MenuTitleFont,
+                TrayMenuTags.Subtitle => AppTheme.MenuCaptionFont,
+                TrayMenuTags.Status => AppTheme.MenuCaptionFont,
+                TrayMenuTags.Swap => AppTheme.MenuButtonFont,
                 _ => e.TextFont,
             };
         }
@@ -55,6 +55,7 @@ internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
             e.TextColor = e.Item.Enabled
                 ? e.Item.Selected ? AppTheme.TextPrimary : AppTheme.TextSecondary
                 : e.Item.Text?.StartsWith('✓') == true ? AppTheme.Success : AppTheme.TextMuted;
+            e.TextFont = AppTheme.MenuBodyFont;
         }
 
         base.OnRenderItemText(e);
