@@ -18,7 +18,8 @@
                        TextWrapping="Wrap"
                        Margin="0,0,0,12" />
 
-            <TextBlock Text="Nickname"
+            <TextBlock x:Name="FieldLabelText"
+                       Text="Nickname"
                        FontSize="11"
                        Foreground="{StaticResource TextMutedBrush}"
                        Margin="0,0,0,4" />
@@ -26,7 +27,8 @@
                      Style="{StaticResource DarkTextBox}"
                      MaxLength="64"
                      Margin="0,0,0,6" />
-            <TextBlock Text="Leave blank to use the hardware name."
+            <TextBlock x:Name="HintText"
+                       Text="Leave blank to use the hardware name."
                        FontSize="10.5"
                        Foreground="{StaticResource TextMutedBrush}"
                        Margin="0,0,0,16" />

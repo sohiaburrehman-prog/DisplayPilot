@@ -201,7 +201,7 @@ Check(ProfileMatcher.ProcessMatches(gameProfile, "GAME.EXE"), "ProcessMatches is
 Check(!ProfileMatcher.ProcessMatches(gameProfile, "notgame"), "ProcessMatches rejects non-matching process");
 Check(!ProfileMatcher.ProcessMatches(gameProfile, ""), "ProcessMatches rejects empty process name");
 Check(!ProfileMatcher.ProcessMatches(null!, "game"), "ProcessMatches rejects null profile");
-Check(!ProfileMatcher.ProcessMatches(gameProfile, "  game.exe  "), "ProcessMatches ignores trailing whitespaces in process name");
+Check(ProfileMatcher.ProcessMatches(gameProfile, "  game.exe  "), "ProcessMatches trims whitespace in process name");
 
 var launcherProfile = new AppProfile
 {
@@ -346,6 +346,32 @@ Check(restored.OpenPanelHotkey.Key == settings.OpenPanelHotkey.Key &&
 Check(restored.CyclePrimaryHotkey.Enabled && restored.CyclePrimaryHotkey.Key == 0x43,
     "Cycle hotkey survives JSON round-trip");
 Check(restored.AutoUpdateCheckEnabled == false, "Auto-update flag survives JSON round-trip");
+
+// ─────────────────── Schema v4: layout presets & last-used profile ───────────────────
+Console.WriteLine("\n== Schema v4: layout presets & last-used profile ==");
+Check(AppSettings.CurrentSchemaVersion == 4, "Current schema version is 4");
+
+var v4Settings = new AppSettings { SchemaVersion = 3 };
+v4Settings.Profiles.Add(gameProfile.Clone());
+SettingsService.TryParseImport(JsonSerializer.Serialize(v4Settings), out var migrated, out _);
+Check(migrated?.SchemaVersion == 4, "Import normalizes schema to v4");
+Check(migrated?.LayoutPresets is not null && migrated.LayoutPresets.Count == 0, "LayoutPresets initialized on migrate");
+
+var preset = LayoutPresetService.CaptureCurrent("Desk", manager);
+Check(!string.IsNullOrWhiteSpace(preset.PrimaryMonitorDeviceName), "Layout preset captures primary device");
+Check(preset.MonitorModes.Count >= count, "Layout preset captures mode per connected monitor");
+
+v4Settings.SchemaVersion = 4;
+v4Settings.LayoutPresets.Add(preset);
+v4Settings.LastUsedProfileId = gameProfile.Id;
+v4Settings.Profiles[0].LastTriggeredUtc = DateTime.UtcNow;
+var v4Json = JsonSerializer.Serialize(v4Settings);
+var v4Restored = JsonSerializer.Deserialize<AppSettings>(v4Json);
+Check(v4Restored?.LayoutPresets.Count == 1 && v4Restored.LayoutPresets[0].Name == "Desk",
+    "Layout presets survive JSON round-trip");
+Check(v4Restored?.LastUsedProfileId == gameProfile.Id, "LastUsedProfileId survives JSON round-trip");
+Check(v4Restored?.Profiles[0].LastTriggeredUtc > DateTime.MinValue,
+    "LastTriggeredUtc survives JSON round-trip");
 
 // ─────────────────── Settings export / import ───────────────────
 Console.WriteLine("\n== Settings export / import ==");

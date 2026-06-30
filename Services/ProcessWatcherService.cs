@@ -4,6 +4,14 @@ using PrimaryDisplaySwap.Models;
 
 namespace PrimaryDisplaySwap.Services;
 
+/// <summary>Live state for the profile currently matched by the process watcher.</summary>
+public sealed class ActiveProfileState
+{
+    public string ProfileId { get; init; } = string.Empty;
+    public string ProfileLabel { get; init; } = string.Empty;
+    public string TargetMonitorLabel { get; init; } = string.Empty;
+}
+
 /// <summary>
 /// Watches running processes on a timer and applies auto-swap profiles: when a
 /// matched process starts, the configured monitor becomes primary; when it
@@ -29,11 +37,27 @@ public sealed class ProcessWatcherService : IDisposable
     private System.Threading.Timer? _timer;
     private bool _polling;
     private bool _disposed;
+    private ActiveProfileState? _currentActiveProfile;
 
     public event EventHandler? PrimaryChanged;
 
+    /// <summary>Raised when the matched active profile changes (including cleared).</summary>
+    public event EventHandler? ActiveProfileChanged;
+
     /// <summary>Brief user-facing status (tray/panel); throttled by subscribers.</summary>
     public event EventHandler<string>? StatusMessage;
+
+    /// <summary>Profile currently matched by the watcher, if any.</summary>
+    public ActiveProfileState? CurrentActiveProfile
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _currentActiveProfile;
+            }
+        }
+    }
 
     public ProcessWatcherService(SettingsService settings, DisplayManager displayManager)
     {
@@ -105,6 +129,7 @@ public sealed class ProcessWatcherService : IDisposable
                 _previousPrimary.Clear();
                 _launcherWatch.Clear();
                 _launcherRunningState.Clear();
+                SetCurrentActiveProfile(null);
                 return;
             }
 
@@ -154,6 +179,8 @@ public sealed class ProcessWatcherService : IDisposable
                     OnProcessExited(profile);
                 }
             }
+
+            UpdateCurrentActiveProfile(profiles, runningNames, detectedChildren);
 
             // Forget state for profiles that no longer exist.
             var liveIds = profiles.Select(p => p.Id).ToHashSet();
@@ -214,6 +241,7 @@ public sealed class ProcessWatcherService : IDisposable
 
             _displayManager.SetPrimaryByDeviceName(target.DeviceName);
             var displayName = MonitorDisplayHelper.GetDisplayName(target, _settings.Current);
+            RecordProfileTriggered(profile);
             AppLogger.Log(
                 $"Profile activated [{label}]: primary set to '{displayName}' ({target.DeviceName}).");
             StatusMessage?.Invoke(this, $"Auto-swap: {displayName} is now primary.");
@@ -275,6 +303,73 @@ public sealed class ProcessWatcherService : IDisposable
         {
             AppLogger.LogException($"ProcessWatcher exit '{profile.DisplayLabel}'", ex);
         }
+    }
+
+    private void RecordProfileTriggered(AppProfile profile)
+    {
+        var now = DateTime.UtcNow;
+        _settings.Update(s =>
+        {
+            s.LastUsedProfileId = profile.Id;
+            var live = s.Profiles.FirstOrDefault(p => p.Id == profile.Id);
+            if (live is not null)
+            {
+                live.LastTriggeredUtc = now;
+            }
+        });
+    }
+
+    private void UpdateCurrentActiveProfile(
+        IReadOnlyList<AppProfile> profiles,
+        HashSet<string> runningNames,
+        Dictionary<string, string> detectedChildren)
+    {
+        AppProfile? active = null;
+        foreach (var profile in profiles)
+        {
+            detectedChildren.TryGetValue(profile.Id, out var detectedChild);
+            if (ProfileMatcher.IsProfileActive(profile, runningNames, detectedChild))
+            {
+                active = profile;
+                break;
+            }
+        }
+
+        if (active is null)
+        {
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
+        var monitors = _displayManager.GetMonitors();
+        var target = ProfileMatcher.ResolveTarget(active, monitors);
+        var monitorLabel = target is not null
+            ? MonitorDisplayHelper.GetDisplayName(target, _settings.Current)
+            : active.TargetMonitorName;
+
+        SetCurrentActiveProfile(new ActiveProfileState
+        {
+            ProfileId = active.Id,
+            ProfileLabel = active.DisplayLabel,
+            TargetMonitorLabel = monitorLabel,
+        });
+    }
+
+    private void SetCurrentActiveProfile(ActiveProfileState? state)
+    {
+        lock (_lock)
+        {
+            if (_currentActiveProfile?.ProfileId == state?.ProfileId &&
+                _currentActiveProfile?.ProfileLabel == state?.ProfileLabel &&
+                _currentActiveProfile?.TargetMonitorLabel == state?.TargetMonitorLabel)
+            {
+                return;
+            }
+
+            _currentActiveProfile = state;
+        }
+
+        ActiveProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public static HashSet<string> GetRunningProcessNames()

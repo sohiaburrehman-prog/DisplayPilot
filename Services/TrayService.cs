@@ -16,6 +16,7 @@ internal sealed class TrayService : IDisposable
     private readonly DisplayManager _displayManager;
     private readonly StartupService _startupService;
     private readonly SettingsService _settings;
+    private readonly ProcessWatcherService? _processWatcher;
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
     private readonly Icon _trayIcon;
@@ -31,11 +32,16 @@ internal sealed class TrayService : IDisposable
     public event EventHandler? CyclePrimaryRequested;
     public event EventHandler? ProfileApplied;
 
-    public TrayService(DisplayManager displayManager, StartupService startupService, SettingsService settings)
+    public TrayService(
+        DisplayManager displayManager,
+        StartupService startupService,
+        SettingsService settings,
+        ProcessWatcherService? processWatcher = null)
     {
         _displayManager = displayManager;
         _startupService = startupService;
         _settings = settings;
+        _processWatcher = processWatcher;
         _trayIcon = AppIconHelper.LoadTrayIcon();
 
         _menu = new ContextMenuStrip
@@ -199,6 +205,14 @@ internal sealed class TrayService : IDisposable
             _menu.Items.Add(cyclePrimaryItem);
         }
 
+        var lastProfile = GetLastUsedProfile();
+        if (lastProfile is not null)
+        {
+            var reapplyItem = new ToolStripMenuItem($"Re-apply last profile ({lastProfile.DisplayLabel})");
+            reapplyItem.Click += (_, _) => ApplyProfile(lastProfile);
+            _menu.Items.Add(reapplyItem);
+        }
+
         var enabledProfiles = _settings.Current.Profiles.Where(p => p.Enabled).ToList();
         if (enabledProfiles.Count == 0)
         {
@@ -224,7 +238,7 @@ internal sealed class TrayService : IDisposable
         {
             try
             {
-                var result = ProfileApplyService.TryApply(profile, _settings.Current, _displayManager);
+                var result = ProfileApplyService.TryApply(profile, _settings.Current, _displayManager, _settings);
                 if (result.Applied)
                 {
                     ShowFeedback($"Profile applied — {result.Message}");
@@ -491,11 +505,31 @@ internal sealed class TrayService : IDisposable
         });
     }
 
+    private AppProfile? GetLastUsedProfile()
+    {
+        var id = _settings.Current.LastUsedProfileId;
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return null;
+        }
+
+        return _settings.Current.Profiles.FirstOrDefault(p => p.Id == id && p.Enabled);
+    }
+
     private void UpdateTrayTooltip(IReadOnlyList<MonitorInfo> monitors)
     {
         if (monitors.Count == 0)
         {
             _notifyIcon.Text = $"{AppInfo.AppName} — no displays detected";
+            return;
+        }
+
+        var active = _processWatcher?.CurrentActiveProfile;
+        if (active is not null)
+        {
+            var watchText = $"Watching: {active.ProfileLabel} -> {active.TargetMonitorLabel}";
+            var activeTooltip = $"{AppInfo.AppName} — {watchText}";
+            _notifyIcon.Text = activeTooltip.Length <= 63 ? activeTooltip : activeTooltip[..60] + "…";
             return;
         }
 

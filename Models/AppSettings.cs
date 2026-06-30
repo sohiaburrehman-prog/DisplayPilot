@@ -78,6 +78,9 @@ public sealed class AppProfile
     /// </summary>
     public bool MatchLauncherChildren { get; set; } = true;
 
+    /// <summary>UTC time this profile last activated (auto-swap or manual apply).</summary>
+    public DateTime LastTriggeredUtc { get; set; } = DateTime.MinValue;
+
     /// <summary>Normalized process name without extension, lower-case.</summary>
     public string NormalizedProcessName => _normalizedProcessName;
 
@@ -135,6 +138,58 @@ public sealed class AppProfile
         RestoreOnExit = RestoreOnExit,
         Enabled = Enabled,
         MatchLauncherChildren = MatchLauncherChildren,
+        LastTriggeredUtc = LastTriggeredUtc,
+    };
+}
+
+/// <summary>Optional resolution/refresh for one monitor inside a layout preset.</summary>
+public sealed class DisplayModePreset
+{
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public int RefreshRateHz { get; set; }
+
+    public DisplayMode ToDisplayMode() => new()
+    {
+        Width = Width,
+        Height = Height,
+        RefreshRateHz = RefreshRateHz,
+    };
+
+    public static DisplayModePreset FromDisplayMode(DisplayMode mode) => new()
+    {
+        Width = mode.Width,
+        Height = mode.Height,
+        RefreshRateHz = mode.RefreshRateHz,
+    };
+
+    public DisplayModePreset Clone() => new()
+    {
+        Width = Width,
+        Height = Height,
+        RefreshRateHz = RefreshRateHz,
+    };
+}
+
+/// <summary>
+/// Saved primary monitor plus optional per-monitor display modes keyed by GDI device name.
+/// </summary>
+public sealed class LayoutPreset
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+    public string PrimaryMonitorDeviceName { get; set; } = string.Empty;
+    public Dictionary<string, DisplayModePreset> MonitorModes { get; set; } = new();
+
+    public LayoutPreset Clone() => new()
+    {
+        Id = Id,
+        Name = Name,
+        PrimaryMonitorDeviceName = PrimaryMonitorDeviceName,
+        MonitorModes = MonitorModes.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Clone(),
+            StringComparer.OrdinalIgnoreCase),
     };
 }
 
@@ -151,7 +206,7 @@ public sealed class AppSettings
     public const uint ModWin = 0x0008;
     public const uint VkM = 0x4D;
 
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -179,6 +234,11 @@ public sealed class AppSettings
 
     public List<AppProfile> Profiles { get; set; } = new();
 
+    public List<LayoutPreset> LayoutPresets { get; set; } = new();
+
+    /// <summary>Profile id last applied manually or via auto-swap (for tray re-apply).</summary>
+    public string LastUsedProfileId { get; set; } = string.Empty;
+
     /// <summary>How often the process watcher polls, in milliseconds.</summary>
     public int ProcessWatchIntervalMs { get; set; } = 3000;
 
@@ -201,6 +261,8 @@ public sealed class AppSettings
         OpenPanelHotkey = OpenPanelHotkey.Clone(),
         CyclePrimaryHotkey = CyclePrimaryHotkey.Clone(),
         Profiles = Profiles.Select(p => p.Clone()).ToList(),
+        LayoutPresets = LayoutPresets.Select(p => p.Clone()).ToList(),
+        LastUsedProfileId = LastUsedProfileId,
         ProcessWatchIntervalMs = ProcessWatchIntervalMs,
         AutoUpdateCheckEnabled = AutoUpdateCheckEnabled,
         LastUpdateCheckUtc = LastUpdateCheckUtc,

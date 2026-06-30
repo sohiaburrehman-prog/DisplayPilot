@@ -25,7 +25,7 @@ Tested **2026-06-21** on Windows 11, dual monitors (AORUS FO32U2P + Dell AW3423D
 
 ```powershell
 dotnet run --project tools/SwapTest/SwapTest.csproj -c Release -- --once
-dotnet run --project tools/MonitorLogicTest/MonitorLogicTest.csproj -c Release   # expect 44 passed on dual-monitor setup
+dotnet run --project tools/MonitorLogicTest/MonitorLogicTest.csproj -c Release   # expect all passed on dual-monitor setup
 dotnet build -c Release   # 0 warnings
 ```
 

@@ -57,7 +57,7 @@ Look for `Microsoft.WindowsDesktop.App 8.x`.
 | --- | --- |
 | **GitHub (recommended)** | [DisplayPilot-Setup.exe](https://github.com/sohiaburrehman-prog/DisplayPilot/releases/latest) — per-user, no admin |
 | **Portable** | [DisplayPilot-Portable.zip](https://github.com/sohiaburrehman-prog/DisplayPilot/releases/latest) — self-contained, unzip and run |
-| **winget (community)** | `winget install SohiabRehman.DisplayPilot` after [winget-pkgs PR](packaging/winget/README.md); test locally with `winget install --manifest packaging\winget\SohiabRehman.DisplayPilot\1.5.0` |
+| **winget (community)** | `winget install SohiabRehman.DisplayPilot` after [winget-pkgs PR](packaging/winget/README.md); test locally with `winget install --manifest packaging\winget\SohiabRehman.DisplayPilot\1.7.0` |
 
 ## Download options
 

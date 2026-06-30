@@ -17,7 +17,8 @@ public static class ProfileApplyService
     public static ApplyResult TryApply(
         AppProfile profile,
         AppSettings settings,
-        DisplayManager displayManager)
+        DisplayManager displayManager,
+        SettingsService? settingsService = null)
     {
         if (profile is null || !profile.Enabled)
         {
@@ -48,6 +49,7 @@ public static class ProfileApplyService
 
         displayManager.SetPrimaryByDeviceName(target.DeviceName);
         var displayName = MonitorDisplayHelper.GetDisplayName(target, settings);
+        RecordProfileUsed(profile, settingsService);
         AppLogger.Log(
             $"Profile applied [{profile.DisplayLabel}]: primary set to '{displayName}' ({target.DeviceName}).");
         return new ApplyResult
@@ -56,5 +58,24 @@ public static class ProfileApplyService
             TargetMonitor = target,
             Message = $"{displayName} is now primary.",
         };
+    }
+
+    private static void RecordProfileUsed(AppProfile profile, SettingsService? settingsService)
+    {
+        if (settingsService is null)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        settingsService.Update(s =>
+        {
+            s.LastUsedProfileId = profile.Id;
+            var live = s.Profiles.FirstOrDefault(p => p.Id == profile.Id);
+            if (live is not null)
+            {
+                live.LastTriggeredUtc = now;
+            }
+        });
     }
 }

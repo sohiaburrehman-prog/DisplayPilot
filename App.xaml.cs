@@ -62,7 +62,9 @@ public partial class App : System.Windows.Application
         _hotkeys.Initialize(helper.Handle);
         ApplyHotkeys(announce: false);
 
-        _tray = new TrayService(_displayManager, _startupService, _settings);
+        _processWatcher = new ProcessWatcherService(_settings, _displayManager);
+
+        _tray = new TrayService(_displayManager, _startupService, _settings, _processWatcher);
         _tray.ShowPanelRequested += (_, _) => ShowPanel();
         _tray.ExitRequested += (_, _) => ExitApplication();
         _tray.PrimaryChanged += (_, _) => _panel?.RefreshMonitors();
@@ -77,11 +79,15 @@ public partial class App : System.Windows.Application
         });
         _tray.Install();
 
-        _processWatcher = new ProcessWatcherService(_settings, _displayManager);
         _processWatcher.PrimaryChanged += (_, _) => Dispatcher.BeginInvoke(() =>
         {
             _panel?.RefreshMonitors();
             _tray?.RefreshMenu();
+        });
+        _processWatcher.ActiveProfileChanged += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            _tray?.RefreshMenu();
+            _profilesWindow?.RefreshMonitors();
         });
         _processWatcher.StatusMessage += (_, message) => Dispatcher.BeginInvoke(() =>
         {
@@ -364,7 +370,7 @@ public partial class App : System.Windows.Application
     {
         if (_profilesWindow is null)
         {
-            _profilesWindow = new ProfilesWindow(_displayManager, _settings);
+            _profilesWindow = new ProfilesWindow(_displayManager, _settings, _processWatcher);
             _profilesWindow.Closed += (_, _) => _profilesWindow = null;
             _profilesWindow.Show();
             if (beginAdd)

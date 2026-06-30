@@ -2,10 +2,21 @@
 
 All notable changes to DisplayPilot are documented here.
 
-## [1.7.0] — 2026-07-02
+## [1.7.0] — 2026-06-30
 
 ### Added
-- **Interactive Help** — new `--interactive-help` command line argument for exploring help topics directly from the terminal.
+- **Layout presets** — save primary monitor plus per-display resolution/refresh; apply, rename, or delete presets from the profile manager
+- **Profile manager UX** — search/filter profiles; duplicate profile; "Last triggered" timestamp per profile
+- **Smarter game detection feedback** — tray tooltip shows the active matched profile; "Active now" badge on profile rows
+- **Tray quick wins** — "Re-apply last profile" menu item remembers the last manual or auto-swap profile
+- **Interactive Help** — `--interactive-help` CLI for exploring help topics from the terminal
+- **Portable zip on every release** — GitHub Actions workflow builds `DisplayPilot-Portable.zip` alongside `DisplayPilot-Setup.exe`
+- **winget manifest** — `packaging/winget/` updated for v1.7.0 submission
+
+### Changed
+- **Process watcher** — caches grouped process lists; exposes current active profile for tray and UI
+- **README screenshots** — improved dark-theme placeholder mockups with capture checklist
+- Settings schema bumped to v4 (`LayoutPresets`, `LastUsedProfileId`, `LastTriggeredUtc`)
 
 ## [1.6.4] — 2026-06-28
 

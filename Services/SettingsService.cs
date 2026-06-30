@@ -130,7 +130,10 @@ public sealed class SettingsService
         settings.CyclePrimaryHotkey ??= new AppSettings().CyclePrimaryHotkey;
         settings.Profiles ??= new List<AppProfile>();
         settings.Profiles.RemoveAll(p => p is null);
+        settings.LayoutPresets ??= new List<LayoutPreset>();
+        settings.LayoutPresets.RemoveAll(p => p is null);
         settings.MonitorNicknames ??= new Dictionary<string, string>();
+        settings.LastUsedProfileId ??= string.Empty;
 
         foreach (var profile in settings.Profiles)
         {
@@ -141,6 +144,16 @@ public sealed class SettingsService
 
             profile.ResolvedTargetProcessName ??= string.Empty;
             profile.MatchLauncherChildren = profile.MatchLauncherChildren || LauncherCatalog.IsKnownLauncher(profile.ProcessName);
+        }
+
+        foreach (var preset in settings.LayoutPresets)
+        {
+            if (string.IsNullOrWhiteSpace(preset.Id))
+            {
+                preset.Id = Guid.NewGuid().ToString("N");
+            }
+
+            preset.MonitorModes ??= new Dictionary<string, DisplayModePreset>(StringComparer.OrdinalIgnoreCase);
         }
 
         settings.LastSeenVersion ??= string.Empty;

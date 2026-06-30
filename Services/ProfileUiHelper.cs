@@ -28,8 +28,10 @@ internal static class ProfileUiHelper
         IReadOnlyList<MonitorInfo> monitors,
         AppSettings settings,
         FrameworkElement host,
+        bool isActiveNow,
         Action<string, bool> onEnabledChanged,
         Action<string> onEdit,
+        Action<string> onDuplicate,
         Action<string> onRemove,
         Action<string> onTest)
     {
@@ -49,15 +51,39 @@ internal static class ProfileUiHelper
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        info.Children.Add(new TextBlock
+        var titleRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        titleRow.Children.Add(new TextBlock
         {
             Text = profile.DisplayLabel,
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)host.FindResource("TextPrimaryBrush"),
         });
+
+        if (isActiveNow)
+        {
+            titleRow.Children.Add(new Border
+            {
+                Background = (Brush)host.FindResource("AccentBrush"),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = "Active now",
+                    FontSize = 10,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)host.FindResource("TextPrimaryBrush"),
+                },
+            });
+        }
+
+        info.Children.Add(titleRow);
 
         var targetLabel = profile.TargetMonitorName;
         foreach (var monitor in monitors)
@@ -78,6 +104,12 @@ internal static class ProfileUiHelper
         if (!profile.Enabled)
         {
             detail += "  ·  disabled";
+        }
+
+        if (profile.LastTriggeredUtc > DateTime.MinValue)
+        {
+            var local = profile.LastTriggeredUtc.ToLocalTime();
+            detail += $"  ·  last triggered {local:g}";
         }
 
         info.Children.Add(new TextBlock
@@ -128,6 +160,19 @@ internal static class ProfileUiHelper
         Grid.SetColumn(editButton, 3);
         grid.Children.Add(editButton);
 
+        var duplicateButton = new Button
+        {
+            Style = (Style)host.FindResource("MiniButton"),
+            Content = "Duplicate",
+            Width = 78,
+            Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Create a copy of this profile",
+        };
+        duplicateButton.Click += (_, _) => onDuplicate(id);
+        Grid.SetColumn(duplicateButton, 4);
+        grid.Children.Add(duplicateButton);
+
         var removeButton = new Button
         {
             Style = (Style)host.FindResource("MiniButton"),
@@ -137,7 +182,7 @@ internal static class ProfileUiHelper
             VerticalAlignment = VerticalAlignment.Center,
         };
         removeButton.Click += (_, _) => onRemove(id);
-        Grid.SetColumn(removeButton, 4);
+        Grid.SetColumn(removeButton, 5);
         grid.Children.Add(removeButton);
 
         border.Child = grid;

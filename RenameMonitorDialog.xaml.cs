@@ -8,12 +8,35 @@ public partial class RenameMonitorDialog : Window
 {
     public string? ResultNickname { get; private set; }
 
+    public string MonitorName => ResultNickname ?? string.Empty;
+
     public RenameMonitorDialog(MonitorInfo monitor, string? currentNickname)
+        : this(currentNickname ?? string.Empty, "Rename monitor", "Nickname", $"Hardware: {monitor.Name}",
+            "Leave blank to use the hardware name.")
+    {
+    }
+
+    public RenameMonitorDialog(
+        string currentName,
+        string title,
+        string fieldLabel,
+        string? subtitle = null,
+        string? hint = null)
     {
         InitializeComponent();
 
-        HardwareNameText.Text = $"Hardware: {monitor.Name}";
-        NicknameBox.Text = currentNickname ?? string.Empty;
+        Title = title;
+        HardwareNameText.Text = subtitle ?? string.Empty;
+        HardwareNameText.Visibility = string.IsNullOrWhiteSpace(subtitle)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        FieldLabelText.Text = fieldLabel;
+        if (!string.IsNullOrWhiteSpace(hint))
+        {
+            HintText.Text = hint;
+        }
+
+        NicknameBox.Text = currentName;
         NicknameBox.SelectAll();
         NicknameBox.Focus();
     }

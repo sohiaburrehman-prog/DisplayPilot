@@ -16,6 +16,7 @@
     <Compile Include="..\..\Services\LauncherCatalog.cs" />
     <Compile Include="..\..\Services\ProcessPickerHelper.cs" />
     <Compile Include="..\..\Services\ProcessWatcherService.cs" />
+    <Compile Include="..\..\Services\LayoutPresetService.cs" />
     <Compile Include="..\..\Services\LauncherChildTracker.cs" />
     <Compile Include="..\..\Services\ChangelogService.cs" />
     <Compile Include="..\..\AppInfo.cs" />
