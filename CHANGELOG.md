@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.2] — 2026-07-01
+
+### Fixed
+- **Swap button on 4K displays** — swap label now uses explicit 13.5sp typography (matching other controls), wraps instead of ellipsizing in a fixed width, and shows a concise "Swap 1 ↔ 2" caption with full monitor names in the tooltip
+
 ## [1.7.1] — 2026-06-30
 
 ### Fixed

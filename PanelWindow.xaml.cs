@@ -235,7 +235,10 @@ public partial class PanelWindow : Window
         {
             var primary = monitors.First(m => m.IsPrimary);
             var other = monitors.First(m => !m.IsPrimary);
-            _swapButtonIdleText = $"Swap {primary.Index + 1} ↔ {other.Index + 1}: {ShortName(MonitorDisplayHelper.GetDisplayName(primary, _settings.Current))} ↔ {ShortName(MonitorDisplayHelper.GetDisplayName(other, _settings.Current))}";
+            var primaryName = MonitorDisplayHelper.GetDisplayName(primary, _settings.Current);
+            var otherName = MonitorDisplayHelper.GetDisplayName(other, _settings.Current);
+            _swapButtonIdleText = $"Swap {primary.Index + 1} ↔ {other.Index + 1}";
+            SwapButton.ToolTip = $"{primaryName} ↔ {otherName}";
             if (!_swapInProgress)
             {
                 SwapLabel.Text = _swapButtonIdleText;

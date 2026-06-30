@@ -27,6 +27,9 @@
             BorderBrush="{StaticResource HairlineBrush}"
             BorderThickness="1"
             CornerRadius="12"
+            UseLayoutRounding="True"
+            TextOptions.TextFormattingMode="Display"
+            TextOptions.TextRenderingMode="ClearType"
             RenderTransformOrigin="0.5,1">
         <Border.RenderTransform>
             <TranslateTransform x:Name="EntranceShift" Y="0" />
@@ -237,9 +240,15 @@
                             <Button x:Name="SwapButton"
                                     Style="{StaticResource SwapButton}"
                                     Margin="0,10,0,0"
+                                    HorizontalAlignment="Stretch"
                                     Click="Swap_Click">
-                                <StackPanel Orientation="Horizontal">
+                                <Grid HorizontalAlignment="Stretch">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
                                     <TextBlock x:Name="SwapIcon"
+                                               Grid.Column="0"
                                                Text="&#xE895;"
                                                FontFamily="{StaticResource IconFont}"
                                                FontSize="14"
@@ -251,11 +260,16 @@
                                         </TextBlock.RenderTransform>
                                     </TextBlock>
                                     <TextBlock x:Name="SwapLabel"
+                                               Grid.Column="1"
                                                Text="Swap Displays"
+                                               FontFamily="{StaticResource UiFont}"
+                                               FontSize="13.5"
+                                               FontWeight="SemiBold"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               MaxWidth="280" />
-                                </StackPanel>
+                                               TextWrapping="Wrap"
+                                               TextTrimming="None" />
+                                </Grid>
                             </Button>
 
                             <!-- Start with Windows -->

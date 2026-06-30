@@ -67,7 +67,9 @@
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="13.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Height" Value="44" />
+        <Setter Property="MinHeight" Value="44" />
+        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
