@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.4] — 2026-07-01
+
+### Fixed
+- **Stale tray notification after swap-back** — primary swap and set-primary tray balloons now replace any visible balloon instead of being suppressed by the 4-second throttle, so swap-back shows the correct current primary monitor
+
 ## [1.7.3] — 2026-07-01
 
 ### Fixed

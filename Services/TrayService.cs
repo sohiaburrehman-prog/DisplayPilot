@@ -477,7 +477,9 @@ internal sealed class TrayService : IDisposable
             {
                 var newPrimary = _displayManager.SetPrimaryMonitor(monitorIndex);
                 AppLogger.Log($"Tray: primary set to {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)}.");
-                ShowFeedback($"{MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.");
+                ShowFeedback(
+                    $"{MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.",
+                    replaceExisting: true);
                 PrimaryChanged?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
@@ -497,7 +499,9 @@ internal sealed class TrayService : IDisposable
             {
                 var newPrimary = _displayManager.SwapPrimaryBetweenTwoMonitors();
                 AppLogger.Log($"Tray: swapped primary to {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)}.");
-                ShowFeedback($"Swapped — {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.");
+                ShowFeedback(
+                    $"Swapped — {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.",
+                    replaceExisting: true);
                 PrimaryChanged?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
@@ -583,9 +587,9 @@ internal sealed class TrayService : IDisposable
     /// <summary>Shows a throttled tray balloon (e.g. profile apply feedback).</summary>
     public void ShowBriefMessage(string message) => ShowFeedback(message);
 
-    private void ShowFeedback(string message)
+    private void ShowFeedback(string message, bool replaceExisting = false)
     {
-        if ((DateTime.UtcNow - _lastBalloonUtc).TotalSeconds < 4)
+        if (!replaceExisting && (DateTime.UtcNow - _lastBalloonUtc).TotalSeconds < 4)
         {
             return;
         }
