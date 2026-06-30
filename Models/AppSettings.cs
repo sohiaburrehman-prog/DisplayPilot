@@ -31,14 +31,40 @@ public sealed class AppProfile
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
+    private string _processName = string.Empty;
+    private string _normalizedProcessName = string.Empty;
+
+    private string _resolvedTargetProcessName = string.Empty;
+    private string _normalizedResolvedTarget = string.Empty;
+
     /// <summary>Process executable name, with or without ".exe" (e.g. "game.exe" or "steam.exe").</summary>
-    public string ProcessName { get; set; } = string.Empty;
+    public string ProcessName
+    {
+        get => _processName;
+        set
+        {
+            _processName = value ?? string.Empty;
+            // ⚡ Bolt optimization: memoize the normalized value on set to prevent
+            // re-allocating a new lower-case string every time the watcher polls.
+            _normalizedProcessName = NormalizeProcessName(_processName);
+        }
+    }
 
     /// <summary>
     /// When <see cref="ProcessName"/> is a launcher, the actual game exe to watch.
     /// Matching uses this when set; otherwise the launcher process alone triggers the profile.
     /// </summary>
-    public string ResolvedTargetProcessName { get; set; } = string.Empty;
+    public string ResolvedTargetProcessName
+    {
+        get => _resolvedTargetProcessName;
+        set
+        {
+            _resolvedTargetProcessName = value ?? string.Empty;
+            // ⚡ Bolt optimization: memoize the normalized value on set to prevent
+            // re-allocating a new lower-case string every time the watcher polls.
+            _normalizedResolvedTarget = NormalizeProcessName(_resolvedTargetProcessName);
+        }
+    }
 
     /// <summary>Friendly monitor name captured when the profile was created.</summary>
     public string TargetMonitorName { get; set; } = string.Empty;
@@ -58,10 +84,10 @@ public sealed class AppProfile
     public bool MatchLauncherChildren { get; set; } = true;
 
     /// <summary>Normalized process name without extension, lower-case.</summary>
-    public string NormalizedProcessName => NormalizeProcessName(ProcessName);
+    public string NormalizedProcessName => _normalizedProcessName;
 
     /// <summary>Normalized resolved target without extension, lower-case.</summary>
-    public string NormalizedResolvedTarget => NormalizeProcessName(ResolvedTargetProcessName);
+    public string NormalizedResolvedTarget => _normalizedResolvedTarget;
 
     public bool HasResolvedTarget => !string.IsNullOrWhiteSpace(ResolvedTargetProcessName);
 
