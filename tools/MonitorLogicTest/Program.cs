@@ -321,6 +321,46 @@ Check(!settings.OpenPanelHotkey.Matches(settings.CyclePrimaryHotkey), "Distinct 
 var conflicting = settings.OpenPanelHotkey.Clone();
 Check(settings.OpenPanelHotkey.Matches(conflicting), "Identical hotkeys report a conflict");
 
+// ─────────────────── Arrangement map layout ───────────────────
+Console.WriteLine("\n== Arrangement map layout ==");
+
+MonitorInfo LayoutMonitor(int index, int x, int y, int width, int height) => new()
+{
+    Index = index,
+    DeviceName = $@"\\.\DISPLAY{index + 1}",
+    Name = $"Display {index + 1}",
+    Width = width,
+    Height = height,
+    PositionX = x,
+    PositionY = y,
+    IsPrimary = index == 1,
+    RefreshRateHz = 60,
+};
+
+var left4K = new List<MonitorInfo>
+{
+    LayoutMonitor(0, -3840, 0, 3840, 2160),
+    LayoutMonitor(1, 0, 0, 3440, 1440),
+};
+var leftLayout = ArrangementMapLayout.Compute(left4K, viewportWidth: 320, mapHeight: 104);
+Check(leftLayout.Tiles[0].Left < leftLayout.Tiles[1].Left,
+    "4K monitor left of ultrawide renders to the left in the map");
+Check(leftLayout.ContentWidth > 320,
+    "Wide dual-monitor desktop exceeds viewport width for horizontal scroll");
+
+var wideTriple = new List<MonitorInfo>
+{
+    LayoutMonitor(0, -3840, 0, 3840, 2160),
+    LayoutMonitor(1, 0, 0, 3440, 1440),
+    LayoutMonitor(2, 3440, 0, 2560, 720),
+};
+var tripleLayout = ArrangementMapLayout.Compute(wideTriple, viewportWidth: 320, mapHeight: 104);
+Check(tripleLayout.Tiles[0].Left < tripleLayout.Tiles[1].Left &&
+      tripleLayout.Tiles[1].Left < tripleLayout.Tiles[2].Left,
+    "Three-monitor topology preserves left-to-right order");
+Check(tripleLayout.ContentWidth > 320,
+    "Three-monitor desktop enables horizontal scrolling");
+
 // ─────────────────── Settings JSON round-trip ───────────────────
 Console.WriteLine("\n== Settings JSON serialization round-trip ==");
 

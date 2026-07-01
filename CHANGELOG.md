@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.5] — 2026-07-01
+
+### Fixed
+- **Arrangement map on mixed-DPI / ultrawide setups** — monitor bounds now come from DisplayConfig (Windows' source of truth for virtual-desktop topology) instead of DEVMODE alone; the map uses explicit content sizing inside a horizontal scroll viewer so displays to the left or right of the primary (e.g. 4K beside an ultrawide) stay reachable via mouse wheel or the scrollbar instead of being clipped at the wrong edge
+
 ## [1.7.4] — 2026-07-01
 
 ### Fixed

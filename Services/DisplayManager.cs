@@ -21,6 +21,7 @@ public sealed class DisplayManager
     public IReadOnlyList<MonitorInfo> GetMonitors()
     {
         var friendlyNames = GetFriendlyNamesByGdiDevice();
+        var configBounds = GetDisplayConfigBoundsByGdiDevice();
         var monitors = new List<MonitorInfo>();
 
         for (uint deviceIndex = 0; ; deviceIndex++)
@@ -48,15 +49,23 @@ public sealed class DisplayManager
                 ? friendly
                 : $"Display {monitors.Count + 1}";
 
+            var bounds = configBounds.TryGetValue(device.DeviceName, out var fromConfig)
+                ? fromConfig
+                : new DisplayBounds(
+                    devMode.dmPositionX,
+                    devMode.dmPositionY,
+                    (int)devMode.dmPelsWidth,
+                    (int)devMode.dmPelsHeight);
+
             monitors.Add(new MonitorInfo
             {
                 Index = monitors.Count,
                 DeviceName = device.DeviceName,
                 Name = name,
-                Width = (int)devMode.dmPelsWidth,
-                Height = (int)devMode.dmPelsHeight,
-                PositionX = devMode.dmPositionX,
-                PositionY = devMode.dmPositionY,
+                Width = bounds.Width,
+                Height = bounds.Height,
+                PositionX = bounds.X,
+                PositionY = bounds.Y,
                 IsPrimary = (device.StateFlags & DisplayDevicePrimaryDevice) != 0,
                 RefreshRateHz = (int)devMode.dmDisplayFrequency
             });
@@ -448,6 +457,71 @@ public sealed class DisplayManager
         Array.Resize(ref paths, (int)pathCount);
         Array.Resize(ref modes, (int)modeCount);
         return (paths, modes);
+    }
+
+    private readonly record struct DisplayBounds(int X, int Y, int Width, int Height);
+
+    /// <summary>
+    /// Maps GDI device names to virtual-desktop bounds via DisplayConfig. Best-effort:
+    /// returns an empty map on failure so callers can fall back to DEVMODE.
+    /// </summary>
+    private static Dictionary<string, DisplayBounds> GetDisplayConfigBoundsByGdiDevice()
+    {
+        var map = new Dictionary<string, DisplayBounds>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var (paths, modes) = QueryActiveConfig();
+
+            foreach (var path in paths)
+            {
+                if ((path.flags & DisplayconfigPathActive) == 0)
+                {
+                    continue;
+                }
+
+                var sourceRequest = new DISPLAYCONFIG_SOURCE_DEVICE_NAME
+                {
+                    header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                    {
+                        type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GetSourceName,
+                        size = (uint)Marshal.SizeOf<DISPLAYCONFIG_SOURCE_DEVICE_NAME>(),
+                        adapterId = path.sourceInfo.adapterId,
+                        id = path.sourceInfo.id
+                    }
+                };
+
+                if (DisplayConfigGetDeviceInfo(ref sourceRequest) != ErrorSuccess ||
+                    string.IsNullOrWhiteSpace(sourceRequest.viewGdiDeviceName))
+                {
+                    continue;
+                }
+
+                var modeIdx = path.sourceInfo.modeInfoIdx;
+                if (modeIdx >= modes.Length)
+                {
+                    continue;
+                }
+
+                ref var mode = ref modes[modeIdx];
+                if (mode.infoType != DISPLAYCONFIG_MODE_INFO.TypeSource)
+                {
+                    continue;
+                }
+
+                map[sourceRequest.viewGdiDeviceName] = new DisplayBounds(
+                    mode.sourceMode.position.x,
+                    mode.sourceMode.position.y,
+                    (int)mode.sourceMode.width,
+                    (int)mode.sourceMode.height);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"DisplayConfig bounds lookup failed: {ex.Message}");
+        }
+
+        return map;
     }
 
     /// <summary>

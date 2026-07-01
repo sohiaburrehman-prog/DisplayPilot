@@ -192,7 +192,12 @@
                                     Padding="8"
                                     Margin="0,0,0,14"
                                     Visibility="Collapsed">
-                                <Canvas x:Name="ArrangementCanvas" Height="104" ClipToBounds="False" />
+                                <ScrollViewer x:Name="MapScroll"
+                                              HorizontalScrollBarVisibility="Auto"
+                                              VerticalScrollBarVisibility="Disabled"
+                                              PanningMode="HorizontalOnly">
+                                    <Canvas x:Name="ArrangementCanvas" ClipToBounds="False" />
+                                </ScrollViewer>
                             </Border>
 
                             <TextBlock Text="DISPLAYS"

@@ -53,6 +53,9 @@ public partial class PanelWindow : Window
     private bool _loadingModeEditors;
     private string _swapButtonIdleText = "Swap Displays";
     private readonly List<Action> _pendingModeLoads = [];
+    private IReadOnlyList<MonitorInfo> _lastMapMonitors = Array.Empty<MonitorInfo>();
+
+    private const double ArrangementMapHeight = 104;
 
     public PanelWindow(DisplayManager displayManager, StartupService startupService, SettingsService settings)
     {
@@ -76,6 +79,9 @@ public partial class PanelWindow : Window
         };
 
         PanelTabs.SelectionChanged += (_, _) => LoadPendingModeEditors();
+
+        MapScroll.SizeChanged += (_, _) => RebuildArrangementMapIfNeeded();
+        MapScroll.PreviewMouseWheel += MapScroll_PreviewMouseWheel;
 
         // Flyout behaviour: clicking elsewhere dismisses the panel. Defer one
         // frame so opening the tray context menu does not instantly hide the flyout.
@@ -202,6 +208,7 @@ public partial class PanelWindow : Window
             EmptyStateHost.Visibility = Visibility.Visible;
             SwapButton.Visibility = Visibility.Collapsed;
             MapHost.Visibility = Visibility.Collapsed;
+            _lastMapMonitors = Array.Empty<MonitorInfo>();
             MoreEmptyStateHost.Visibility = Visibility.Visible;
             return;
         }
@@ -225,6 +232,7 @@ public partial class PanelWindow : Window
             EmptyStateHost.Visibility = Visibility.Visible;
             SwapButton.Visibility = Visibility.Collapsed;
             MapHost.Visibility = Visibility.Collapsed;
+            _lastMapMonitors = Array.Empty<MonitorInfo>();
             return;
         }
 
@@ -246,6 +254,7 @@ public partial class PanelWindow : Window
         }
 
         BuildArrangementMap(monitors);
+        _lastMapMonitors = monitors;
         MapHost.Visibility = Visibility.Visible;
 
         foreach (var monitor in monitors)
@@ -310,30 +319,22 @@ public partial class PanelWindow : Window
     {
         ArrangementCanvas.Children.Clear();
 
-        const double mapHeight = 104;
-        var mapWidth = Math.Max(ArrangementCanvas.ActualWidth, 320.0);
-        const double pad = 4;
-
-        double minX = monitors.Min(m => (double)m.PositionX);
-        double minY = monitors.Min(m => (double)m.PositionY);
-        double maxX = monitors.Max(m => (double)m.PositionX + m.Width);
-        double maxY = monitors.Max(m => (double)m.PositionY + m.Height);
-
-        var scale = Math.Min(
-            (mapWidth - pad * 2) / Math.Max(maxX - minX, 1),
-            (mapHeight - pad * 2) / Math.Max(maxY - minY, 1));
-
-        var offsetX = (mapWidth - (maxX - minX) * scale) / 2;
-        var offsetY = (mapHeight - (maxY - minY) * scale) / 2;
-
+        var viewportWidth = MapScroll.ActualWidth > 0
+            ? MapScroll.ActualWidth
+            : Math.Max(ArrangementCanvas.ActualWidth, 320.0);
+        var layout = ArrangementMapLayout.Compute(monitors, viewportWidth, ArrangementMapHeight);
         var isTwoMonitorSwap = monitors.Count == 2;
 
-        foreach (var monitor in monitors)
+        ArrangementCanvas.Width = layout.ContentWidth;
+        ArrangementCanvas.Height = isTwoMonitorSwap
+            ? layout.ContentHeight + 18
+            : layout.ContentHeight;
+
+        foreach (var tile in layout.Tiles)
         {
-            var w = monitor.Width * scale - 4;
-            var h = monitor.Height * scale - 4;
-            var screenW = Math.Max(w, 24);
-            var screenH = Math.Max(h, 16);
+            var monitor = tile.Monitor;
+            var screenW = tile.Width;
+            var screenH = tile.Height;
 
             var screen = new Border
             {
@@ -429,8 +430,8 @@ public partial class PanelWindow : Window
                     : (Brush)FindResource("HairlineBrush");
             };
 
-            Canvas.SetLeft(screen, offsetX + (monitor.PositionX - minX) * scale + 2);
-            Canvas.SetTop(screen, offsetY + (monitor.PositionY - minY) * scale + 2);
+            Canvas.SetLeft(screen, tile.Left);
+            Canvas.SetTop(screen, tile.Top);
             ArrangementCanvas.Children.Add(screen);
         }
 
@@ -445,14 +446,37 @@ public partial class PanelWindow : Window
                 HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             };
             Canvas.SetLeft(hint, 0);
-            Canvas.SetTop(hint, mapHeight + 2);
+            Canvas.SetTop(hint, layout.ContentHeight + 2);
             ArrangementCanvas.Children.Add(hint);
-            ArrangementCanvas.Height = mapHeight + 18;
         }
-        else
+    }
+
+    private void RebuildArrangementMapIfNeeded()
+    {
+        if (_lastMapMonitors.Count <= 1 || MapHost.Visibility != Visibility.Visible)
         {
-            ArrangementCanvas.Height = mapHeight;
+            return;
         }
+
+        if (MapScroll.ActualWidth <= 0)
+        {
+            return;
+        }
+
+        BuildArrangementMap(_lastMapMonitors);
+    }
+
+    /// <summary>Wheel over the map pans horizontally so off-screen displays stay reachable.</summary>
+    private void MapScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (MapScroll.ScrollableWidth <= 0)
+        {
+            return;
+        }
+
+        var nextOffset = MapScroll.HorizontalOffset - e.Delta;
+        MapScroll.ScrollToHorizontalOffset(Math.Clamp(nextOffset, 0, MapScroll.ScrollableWidth));
+        e.Handled = true;
     }
 
     private void ShowRenameDialog(MonitorInfo monitor)
