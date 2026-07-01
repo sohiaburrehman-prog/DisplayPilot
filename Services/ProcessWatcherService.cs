@@ -341,6 +341,13 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // ⚡ Bolt Performance Optimization:
+        // Avoid querying the GPU via DisplayConfig API every 3s if the active profile is unchanged.
+        if (CurrentActiveProfile?.ProfileId == active.Id)
+        {
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         var target = ProfileMatcher.ResolveTarget(active, monitors);
         var monitorLabel = target is not null

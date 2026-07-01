@@ -1,0 +1,3 @@
+## 2024-05-24 - Unnecessary DisplayConfig queries during process polling
+**Learning:** Periodically calling `GetMonitors()` (which queries `QueryDisplayConfig` to resolve friendly monitor names via `GetFriendlyNamesByGdiDevice()`) during the background polling loop (`UpdateCurrentActiveProfile` in `ProcessWatcherService.cs`) causes unnecessary GPU driver interaction, which can lead to micro-stutters during gameplay.
+**Action:** Avoid querying `GetMonitors()` during active process polling loops when the active profile has not changed. Cache active state and return early if the profile ID remains consistent.
