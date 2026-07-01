@@ -16,7 +16,7 @@ ReleaseDate: 2026-07-01
 Installers:
 - Architecture: x64
   InstallerUrl: https://github.com/sohiaburrehman-prog/DisplayPilot/releases/download/v1.7.5/DisplayPilot-Setup.exe
-  InstallerSha256: DEF9229F2E7D9F232C0FCB632C8A3215D0C338FC70772C24CC89ED726BFA1028
+  InstallerSha256: EBDED5DCAF751F6D345AC6201A4564151BB64D48611BF8C2F1B06BF8660B43E7
   ProductCode: DisplayPilot_is1
   AppsAndFeaturesEntries:
   - DisplayName: DisplayPilot
