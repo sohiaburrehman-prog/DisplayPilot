@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DisplayPilot — Settings"
         Width="560"
-        Height="520"
+        Height="700"
         MinWidth="520"
-        MinHeight="420"
+        MinHeight="560"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource FlyoutOpaqueBrush}"
         FontFamily="{StaticResource UiFont}">

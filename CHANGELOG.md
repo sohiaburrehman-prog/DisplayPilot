@@ -5,7 +5,7 @@ All notable changes to DisplayPilot are documented here.
 ## [1.7.7] — 2026-07-02
 
 ### Fixed
-- **Settings scroll** — APPEARANCE (theme picker) and UPDATES sections were below the fold with no scrollbar; middle content now scrolls like other windows
+- **Settings window** — default height raised (520→700) and minimum height raised (420→560) so HOTKEYS through UPDATES and Close are visible without manual resize; middle content scrolls on smaller screens
 
 ## [1.7.6] — 2026-07-02
 
