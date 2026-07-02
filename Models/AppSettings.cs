@@ -193,6 +193,15 @@ public sealed class LayoutPreset
     };
 }
 
+/// <summary>How the UI palette is chosen.</summary>
+public enum ThemePreference
+{
+    /// <summary>Follow the Windows apps light/dark setting and accent colour.</summary>
+    System = 0,
+    Dark = 1,
+    Light = 2,
+}
+
 /// <summary>
 /// Persisted application settings. Serialized to
 /// %LOCALAPPDATA%\DisplayPilot\settings.json.
@@ -253,10 +262,18 @@ public sealed class AppSettings
     /// <summary>App version for which the user last dismissed the "What's new" banner.</summary>
     public string LastSeenVersion { get; set; } = string.Empty;
 
+    /// <summary>UI theme: follow Windows (default), or force Dark / Light.</summary>
+    public ThemePreference Theme { get; set; } = ThemePreference.System;
+
+    /// <summary>True once the one-time "we live in the tray" hint has been shown.</summary>
+    public bool FirstRunTrayHintShown { get; set; }
+
     public AppSettings Clone() => new()
     {
         SchemaVersion = SchemaVersion,
         FirstRunCompleted = FirstRunCompleted,
+        Theme = Theme,
+        FirstRunTrayHintShown = FirstRunTrayHintShown,
         MonitorNicknames = new Dictionary<string, string>(MonitorNicknames),
         OpenPanelHotkey = OpenPanelHotkey.Clone(),
         CyclePrimaryHotkey = CyclePrimaryHotkey.Clone(),

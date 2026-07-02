@@ -185,6 +185,33 @@ public sealed class DisplayManager
     }
 
     /// <summary>
+    /// Switches the active display topology — the same four options as the
+    /// Windows "Project" (Win+P) flyout. Uses SetDisplayConfig with an
+    /// SDC_TOPOLOGY_* flag, which Windows persists for the current display set.
+    /// </summary>
+    public void SetProjectionMode(ProjectionMode mode)
+    {
+        var topology = mode switch
+        {
+            ProjectionMode.PcScreenOnly => SdcTopologyInternal,
+            ProjectionMode.Duplicate => SdcTopologyClone,
+            ProjectionMode.Extend => SdcTopologyExtend,
+            ProjectionMode.SecondScreenOnly => SdcTopologyExternal,
+            _ => SdcTopologyExtend,
+        };
+
+        var result = SetDisplayConfig(0, IntPtr.Zero, 0, IntPtr.Zero, topology | SdcApply);
+        if (result != ErrorSuccess)
+        {
+            throw new InvalidOperationException(
+                $"Could not switch to \"{mode.DisplayLabel()}\" (Win32 error {result}). " +
+                "The connected displays may not support that projection mode.");
+        }
+
+        AppLogger.Log($"Projection mode set to {mode.DisplayLabel()}.");
+    }
+
+    /// <summary>
     /// Enumerates the display modes (resolution + refresh) the monitor reports,
     /// de-duplicated and sorted from highest to lowest. Returns an empty list on
     /// failure.

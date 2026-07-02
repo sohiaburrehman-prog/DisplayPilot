@@ -47,6 +47,10 @@ public partial class App : System.Windows.Application
 
         _settings.Load();
 
+        // Theme the shared brushes before any window is built so the first
+        // paint is already correct. Follows the Windows accent + light/dark.
+        ThemeManager.Initialize(this, _settings.Current.Theme);
+
         _panel = new PanelWindow(_displayManager, _startupService, _settings);
         _panel.SettingsRequested += (_, _) => ShowSettings();
         _panel.ProfilesRequested += (_, _) => ShowProfiles(beginAdd: _settings.Current.Profiles.Count == 0);
@@ -126,6 +130,32 @@ public partial class App : System.Windows.Application
         {
             ShowPanel();
         }
+
+        MaybeShowTrayHint();
+    }
+
+    /// <summary>Once, after the first run, points the user at the tray icon so
+    /// they know where the app went when the panel is closed.</summary>
+    private void MaybeShowTrayHint()
+    {
+        if (!_settings.Current.FirstRunCompleted || _settings.Current.FirstRunTrayHintShown)
+        {
+            return;
+        }
+
+        var hotkey = HotkeyService.Describe(_settings.Current.OpenPanelHotkey);
+        var reopen = string.IsNullOrWhiteSpace(hotkey)
+            ? "Click this icon anytime to open it."
+            : $"Click this icon or press {hotkey} to open it anytime.";
+
+        // Defer so the notification-area icon is settled before the balloon.
+        Dispatcher.BeginInvoke(
+            new Action(() =>
+            {
+                _tray?.ShowTrayHint($"DisplayPilot keeps running in the tray. {reopen}");
+                _settings.Update(s => s.FirstRunTrayHintShown = true);
+            }),
+            DispatcherPriority.ApplicationIdle);
     }
 
     /// <summary>Shows the setup wizard (first run or re-run from Settings).</summary>
@@ -147,12 +177,15 @@ public partial class App : System.Windows.Application
         {
             ShowPanel();
         }
+
+        MaybeShowTrayHint();
     }
 
     private void OnSettingsChanged(object? sender, EventArgs e)
     {
         Dispatcher.BeginInvoke(() =>
         {
+            ThemeManager.Apply(_settings.Current.Theme);
             ApplyHotkeys(announce: true);
             _processWatcher?.Reconfigure();
             _panel?.RefreshHotkeyHints();

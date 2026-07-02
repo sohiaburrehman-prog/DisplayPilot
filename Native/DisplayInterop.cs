@@ -82,6 +82,23 @@ internal static class DisplayInterop
     public const uint SdcAllowChanges = 0x00000400;
     public const uint SdcSaveToDatabase = 0x00000200;
 
+    // Win+P projection topologies. Combined with SdcApply these switch the
+    // active display topology exactly like the Windows "Project" flyout.
+    public const uint SdcTopologyInternal = 0x00000001; // PC screen only
+    public const uint SdcTopologyClone    = 0x00000002; // Duplicate
+    public const uint SdcTopologyExtend   = 0x00000004; // Extend
+    public const uint SdcTopologyExternal = 0x00000008; // Second screen only
+
+    /// <summary>Overload for topology changes: pass IntPtr.Zero for the path
+    /// and mode arrays and an SDC_TOPOLOGY_* flag combined with SDC_APPLY.</summary>
+    [DllImport("user32.dll")]
+    public static extern int SetDisplayConfig(
+        uint numPathArrayElements,
+        IntPtr pathArray,
+        uint numModeInfoArrayElements,
+        IntPtr modeInfoArray,
+        uint flags);
+
     [DllImport("user32.dll")]
     public static extern int GetDisplayConfigBufferSizes(int flags, out uint numPathArrayElements, out uint numModeInfoArrayElements);
 

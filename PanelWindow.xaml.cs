@@ -110,7 +110,8 @@ public partial class PanelWindow : Window
 
         var hwnd = new WindowInteropHelper(this).Handle;
 
-        var dark = 1;
+        // Match the DWM backdrop tint to the active theme.
+        var dark = ThemeManager.IsLight ? 0 : 1;
         DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
 
         var corner = DwmwcpRound;
@@ -449,6 +450,86 @@ public partial class PanelWindow : Window
             Canvas.SetTop(hint, layout.ContentHeight + 2);
             ArrangementCanvas.Children.Add(hint);
         }
+    }
+
+    /// <summary>When exactly two tiles are on the map, animates them sliding
+    /// past each other to trade places — the visual counterpart of a swap.
+    /// Completes (roughly) when the slide finishes so the caller can rebuild.</summary>
+    private Task PlayMapSwapAnimationAsync()
+    {
+        var tiles = ArrangementCanvas.Children.OfType<Border>()
+            .Where(b => b.Tag is MonitorInfo)
+            .ToList();
+
+        if (tiles.Count != 2)
+        {
+            return Task.CompletedTask;
+        }
+
+        var a = tiles[0];
+        var b = tiles[1];
+        var aLeft = Canvas.GetLeft(a);
+        var bLeft = Canvas.GetLeft(b);
+        if (double.IsNaN(aLeft) || double.IsNaN(bLeft))
+        {
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource();
+        var duration = TimeSpan.FromMilliseconds(320);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+
+        // Lift the tiles a touch and arc them so they don't just overlap flatly.
+        foreach (var tile in tiles)
+        {
+            tile.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+            tile.RenderTransform = new TranslateTransform();
+        }
+
+        System.Windows.Controls.Panel.SetZIndex(a, 10);
+
+        var slideA = new DoubleAnimation(aLeft, bLeft, duration) { EasingFunction = ease };
+        var slideB = new DoubleAnimation(bLeft, aLeft, duration) { EasingFunction = ease };
+
+        var arc = new DoubleAnimation
+        {
+            From = 0,
+            To = -10,
+            Duration = TimeSpan.FromMilliseconds(160),
+            AutoReverse = true,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        };
+
+        slideB.Completed += (_, _) => tcs.TrySetResult();
+        a.BeginAnimation(Canvas.LeftProperty, slideA);
+        b.BeginAnimation(Canvas.LeftProperty, slideB);
+        ((TranslateTransform)a.RenderTransform).BeginAnimation(TranslateTransform.YProperty, arc);
+        ((TranslateTransform)b.RenderTransform).BeginAnimation(TranslateTransform.YProperty, (DoubleAnimation)arc.Clone());
+
+        return tcs.Task;
+    }
+
+    /// <summary>Quick scale-and-fade "pop" on the current primary tile after a
+    /// change, drawing the eye to the display that just became primary.</summary>
+    private void PulsePrimaryTile()
+    {
+        var primary = ArrangementCanvas.Children.OfType<Border>()
+            .FirstOrDefault(b => b.Tag is MonitorInfo m && m.IsPrimary);
+        if (primary is null)
+        {
+            return;
+        }
+
+        var scale = new ScaleTransform(0.82, 0.82);
+        primary.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+        primary.RenderTransform = scale;
+
+        var pop = new DoubleAnimation(0.82, 1.0, TimeSpan.FromMilliseconds(380))
+        {
+            EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.7 },
+        };
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
     }
 
     private void RebuildArrangementMapIfNeeded()
@@ -1002,7 +1083,9 @@ public partial class PanelWindow : Window
 
             var newPrimary = await Task.Run(() => _displayManager.SwapPrimaryBetweenTwoMonitors());
 
+            await PlayMapSwapAnimationAsync();
             RefreshMonitors();
+            PulsePrimaryTile();
             ShowStatus($"Swapped — {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.", success: true);
         }
         catch (Exception ex)
@@ -1031,6 +1114,7 @@ public partial class PanelWindow : Window
             var newPrimary = await Task.Run(() => _displayManager.SetPrimaryMonitor(monitorIndex));
 
             RefreshMonitors();
+            PulsePrimaryTile();
             ShowStatus($"Primary set to {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)}.", success: true);
         }
         catch (Exception ex)

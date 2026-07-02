@@ -52,8 +52,21 @@ public partial class SettingsWindow : Window
         CycleCapture.Content = HotkeyService.Describe(_settings.Current.CyclePrimaryHotkey);
         CycleCapture.IsEnabled = _settings.Current.CyclePrimaryHotkey.Enabled;
         AutoUpdateCheck.IsChecked = _settings.Current.AutoUpdateCheckEnabled;
+        ThemeCombo.SelectedIndex = (int)_settings.Current.Theme;
 
         _suppressToggleEvents = false;
+    }
+
+    private void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        var choice = (ThemePreference)Math.Clamp(ThemeCombo.SelectedIndex, 0, 2);
+        _settings.Update(s => s.Theme = choice);
+        // App subscribes to settings changes and re-applies the theme live.
     }
 
     private void OpenProfileManager_Click(object sender, RoutedEventArgs e) =>

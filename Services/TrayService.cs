@@ -201,6 +201,10 @@ internal sealed class TrayService : IDisposable
             var cyclePrimaryItem = CreateActionItem("Cycle &primary display");
             cyclePrimaryItem.Click += (_, _) => CyclePrimaryRequested?.Invoke(this, EventArgs.Empty);
             _menu.Items.Add(cyclePrimaryItem);
+
+            var projectionItem = CreateActionItem("Screen &projection (Win+P)");
+            projectionItem.DropDown = BuildProjectionSubmenu();
+            _menu.Items.Add(projectionItem);
         }
 
         var lastProfile = GetLastUsedProfile();
@@ -491,6 +495,54 @@ internal sealed class TrayService : IDisposable
         });
     }
 
+    private ContextMenuStrip BuildProjectionSubmenu()
+    {
+        var menu = new ContextMenuStrip
+        {
+            Renderer = new DarkMenuRenderer(),
+            ShowImageMargin = false,
+            Font = AppTheme.MenuBodyFont,
+            Padding = new Padding(4, 6, 4, 6),
+        };
+
+        foreach (var mode in new[]
+        {
+            ProjectionMode.PcScreenOnly,
+            ProjectionMode.Duplicate,
+            ProjectionMode.Extend,
+            ProjectionMode.SecondScreenOnly,
+        })
+        {
+            var captured = mode;
+            var item = CreateActionItem(mode.DisplayLabel());
+            item.Click += (_, _) => SetProjection(captured);
+            menu.Items.Add(item);
+        }
+
+        return menu;
+    }
+
+    private void SetProjection(ProjectionMode mode)
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _displayManager.SetProjectionMode(mode);
+                ShowFeedback($"Projection: {mode.DisplayLabel()}.", replaceExisting: true);
+                // The topology change raises WM_DISPLAYCHANGE, which the app
+                // already listens for and uses to refresh the panel and menu.
+                PrimaryChanged?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"Tray SetProjection failed: {ex.Message}");
+                System.Windows.Forms.MessageBox.Show(ex.Message, "Could not change projection",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        });
+    }
+
     private void SwapPrimary()
     {
         _ = Task.Run(() =>
@@ -586,6 +638,16 @@ internal sealed class TrayService : IDisposable
 
     /// <summary>Shows a throttled tray balloon (e.g. profile apply feedback).</summary>
     public void ShowBriefMessage(string message) => ShowFeedback(message);
+
+    /// <summary>One-time onboarding balloon that points the user at the tray icon.</summary>
+    public void ShowTrayHint(string message)
+    {
+        _lastBalloonUtc = DateTime.UtcNow;
+        _notifyIcon.BalloonTipTitle = $"{AppInfo.AppName} is here";
+        _notifyIcon.BalloonTipText = message;
+        _notifyIcon.BalloonTipIcon = ToolTipIcon.Info;
+        _notifyIcon.ShowBalloonTip(6000);
+    }
 
     private void ShowFeedback(string message, bool replaceExisting = false)
     {

@@ -2,6 +2,14 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.6] — 2026-07-02
+
+### Added
+- **Theme preference** — System (follows Windows light/dark and accent), Dark, or Light; live palette updates from Settings
+- **Win+P projection modes** — PC screen only, Duplicate, Extend, and Second screen only from the tray context menu
+- **Panel polish** — swap animation on the two-monitor arrangement map; primary tile pulse after set-primary or swap
+- **First-run tray hint** — one-time balloon after setup pointing users to the tray icon and hotkey
+
 ## [1.7.5] — 2026-07-01
 
 ### Fixed
