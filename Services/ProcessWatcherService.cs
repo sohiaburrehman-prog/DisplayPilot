@@ -341,11 +341,23 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
-        var monitors = _displayManager.GetMonitors();
-        var target = ProfileMatcher.ResolveTarget(active, monitors);
-        var monitorLabel = target is not null
-            ? MonitorDisplayHelper.GetDisplayName(target, _settings.Current)
-            : active.TargetMonitorName;
+        // Optimization: Avoid expensive GetMonitors() calls if the active profile hasn't changed.
+        // GetMonitors() internally triggers Win32 QueryDisplayConfig which can cause micro-stutters
+        // if called repeatedly in this polling loop.
+        string monitorLabel;
+        var currentActive = CurrentActiveProfile;
+        if (currentActive is not null && currentActive.ProfileId == active.Id && currentActive.ProfileLabel == active.DisplayLabel)
+        {
+            monitorLabel = currentActive.TargetMonitorLabel;
+        }
+        else
+        {
+            var monitors = _displayManager.GetMonitors();
+            var target = ProfileMatcher.ResolveTarget(active, monitors);
+            monitorLabel = target is not null
+                ? MonitorDisplayHelper.GetDisplayName(target, _settings.Current)
+                : active.TargetMonitorName;
+        }
 
         SetCurrentActiveProfile(new ActiveProfileState
         {

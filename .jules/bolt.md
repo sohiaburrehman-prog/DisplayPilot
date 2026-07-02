@@ -1,0 +1,3 @@
+## 2025-01-08 - Avoid DisplayManager.GetMonitors() in Polling Loops
+**Learning:** `DisplayManager.GetMonitors()` internally triggers expensive Win32 `QueryDisplayConfig` calls, which hit the GPU. When this is placed inside a frequent polling loop (like `ProcessWatcherService` that checks every second), it can cause micro-stutters during execution.
+**Action:** Always cache or reuse existing state in polling loops when checking monitor configuration, instead of repeatedly querying the Win32 API. Avoid `GetMonitors()` on the hot path unless an actual state change is detected or required.
