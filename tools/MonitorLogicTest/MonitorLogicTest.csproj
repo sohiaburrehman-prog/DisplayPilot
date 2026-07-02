@@ -23,6 +23,7 @@
     <Compile Include="..\..\AppInfo.cs" />
     <Compile Include="..\..\Models\MonitorInfo.cs" />
     <Compile Include="..\..\Models\DisplayMode.cs" />
+    <Compile Include="..\..\Models\ProjectionMode.cs" />
     <Compile Include="..\..\Models\AppSettings.cs" />
     <Compile Include="..\..\Native\DisplayInterop.cs" />
     <Compile Include="..\..\AppLogger.cs" />
