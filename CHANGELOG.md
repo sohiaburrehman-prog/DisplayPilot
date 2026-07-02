@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.7] — 2026-07-02
+
+### Fixed
+- **Settings scroll** — APPEARANCE (theme picker) and UPDATES sections were below the fold with no scrollbar; middle content now scrolls like other windows
+
 ## [1.7.6] — 2026-07-02
 
 ### Added

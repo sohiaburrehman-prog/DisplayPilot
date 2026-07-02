@@ -13,7 +13,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -33,7 +33,11 @@
             </StackPanel>
         </Border>
 
-        <StackPanel Grid.Row="1" Margin="16,12,16,8" VerticalAlignment="Top">
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Margin="16,12,16,8">
+        <StackPanel>
 
             <!-- ═══════ Hotkeys ═══════ -->
             <TextBlock Text="HOTKEYS"
@@ -238,6 +242,7 @@
             </Border>
 
         </StackPanel>
+        </ScrollViewer>
 
         <Border Grid.Row="2" Padding="16,14,16,16"
                 Background="{StaticResource HeaderBrush}"
