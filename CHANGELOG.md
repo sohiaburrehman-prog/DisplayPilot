@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.8] — 2026-07-02
+
+### Fixed
+- **Settings window height** — default size raised further (700→720, MinHeight 560→680) so all sections fit without scrolling at 100% DPI on 1080p+; ScrollViewer remains for smaller screens
+
 ## [1.7.7] — 2026-07-02
 
 ### Fixed
