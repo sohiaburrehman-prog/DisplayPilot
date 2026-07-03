@@ -341,6 +341,22 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // ⚡ Bolt Optimization:
+        // Avoid calling _displayManager.GetMonitors() on every poll cycle if the active profile
+        // hasn't changed. GetMonitors() executes expensive Win32 GPU queries (QueryDisplayConfig)
+        // which can cause micro-stutters.
+        var current = CurrentActiveProfile;
+        if (current != null && current.ProfileId == active.Id)
+        {
+            SetCurrentActiveProfile(new ActiveProfileState
+            {
+                ProfileId = active.Id,
+                ProfileLabel = active.DisplayLabel,
+                TargetMonitorLabel = current.TargetMonitorLabel,
+            });
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         var target = ProfileMatcher.ResolveTarget(active, monitors);
         var monitorLabel = target is not null
