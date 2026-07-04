@@ -33,4 +33,8 @@
   <ItemGroup>
     <EmbeddedResource Include="..\..\CHANGELOG.md" Link="CHANGELOG.md" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- ProcessWatcherService uses WMI process-creation events. -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
 </Project>

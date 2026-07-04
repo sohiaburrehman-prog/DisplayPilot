@@ -2,6 +2,14 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.9] — 2026-07-04
+
+### Performance
+- **Process watcher** — skip redundant `GetMonitors()` when the active profile is unchanged (PR #17); WMI push detection on process creation triggers an immediate poll so auto-swap matches games within ~1 s instead of waiting for the next timer tick
+
+### Fixed
+- **Settings window height** — default Height 840 / MinHeight 720; window auto-sizes to measured content on open so HOTKEYS through UPDATES and Close fit without a scrollbar at 100% and 150% DPI; ScrollViewer only when manually resized smaller
+
 ## [1.7.8] — 2026-07-02
 
 ### Fixed

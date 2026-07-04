@@ -13,9 +13,9 @@
     <AssemblyName>DisplayPilot</AssemblyName>
     <AssemblyTitle>DisplayPilot</AssemblyTitle>
     <Product>DisplayPilot</Product>
-    <Version>1.7.8</Version>
-    <AssemblyVersion>1.7.8.0</AssemblyVersion>
-    <FileVersion>1.7.8.0</FileVersion>
+    <Version>1.7.9</Version>
+    <AssemblyVersion>1.7.9.0</AssemblyVersion>
+    <FileVersion>1.7.9.0</FileVersion>
     <RootNamespace>PrimaryDisplaySwap</RootNamespace>
     <!-- Program.Main owns startup (single-instance mutex) instead of the
          WPF-generated entry point. -->
@@ -47,6 +47,11 @@
     <Using Remove="System.Windows.Media.Imaging" />
     <Using Remove="System.Windows.Navigation" />
     <Using Remove="System.Windows.Shapes" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WMI process-creation events for low-latency auto-swap detection. -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

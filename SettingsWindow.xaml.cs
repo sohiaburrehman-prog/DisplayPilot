@@ -10,6 +10,7 @@ using PrimaryDisplaySwap.Services;
 
 using Button = System.Windows.Controls.Button;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using Size = System.Windows.Size;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
@@ -39,8 +40,35 @@ public partial class SettingsWindow : Window
         InitializeComponent();
 
         PreviewKeyDown += OnPreviewKeyDown;
+        Loaded += OnLoaded;
 
         LoadFromSettings();
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e) => FitHeightToContent();
+
+    /// <summary>
+    /// Expand to fit all sections at open so the ScrollViewer stays hidden at default
+    /// size (100%/150% DPI). Scrollbar appears only if the user resizes below MinHeight.
+    /// </summary>
+    private void FitHeightToContent()
+    {
+        const double scrollVerticalMargin = 20; // ScrollViewer Margin 12 + 8
+
+        var contentWidth = Math.Max(0, ActualWidth - 32); // horizontal ScrollViewer margin 16×2
+        SettingsContent.Measure(new Size(contentWidth, double.PositiveInfinity));
+        SettingsContent.UpdateLayout();
+
+        var needed = HeaderBorder.ActualHeight
+                     + FooterBorder.ActualHeight
+                     + scrollVerticalMargin
+                     + SettingsContent.DesiredSize.Height;
+
+        var target = Math.Ceiling(needed);
+        if (Height < target)
+        {
+            Height = target;
+        }
     }
 
     public void LoadFromSettings()

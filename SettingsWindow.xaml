@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DisplayPilot — Settings"
         Width="560"
-        Height="720"
+        Height="840"
         MinWidth="520"
-        MinHeight="680"
+        MinHeight="720"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource FlyoutOpaqueBrush}"
         FontFamily="{StaticResource UiFont}">
@@ -17,7 +17,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0"
+        <Border x:Name="HeaderBorder" Grid.Row="0"
                 Background="{StaticResource HeaderBrush}"
                 BorderBrush="{StaticResource HairlineBrush}"
                 BorderThickness="0,0,0,1"
@@ -37,7 +37,7 @@
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       Margin="16,12,16,8">
-        <StackPanel>
+        <StackPanel x:Name="SettingsContent">
 
             <!-- ═══════ Hotkeys ═══════ -->
             <TextBlock Text="HOTKEYS"
@@ -244,7 +244,7 @@
         </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Row="2" Padding="16,14,16,16"
+        <Border x:Name="FooterBorder" Grid.Row="2" Padding="16,14,16,16"
                 Background="{StaticResource HeaderBrush}"
                 BorderBrush="{StaticResource HairlineBrush}"
                 BorderThickness="0,1,0,0">

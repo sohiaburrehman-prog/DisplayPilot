@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Management;
 
 using PrimaryDisplaySwap.Models;
 
@@ -35,9 +36,15 @@ public sealed class ProcessWatcherService : IDisposable
     private readonly Dictionary<string, bool> _launcherRunningState = new();
 
     private System.Threading.Timer? _timer;
+    private ManagementEventWatcher? _startWatcher;
     private bool _polling;
     private bool _disposed;
     private ActiveProfileState? _currentActiveProfile;
+
+    // Fallback timer cadence once WMI push-detection is active. WMI catches
+    // process starts within ~1 s, so the timer only needs to cover exits and
+    // act as a safety net if WMI is unavailable.
+    private int PollIntervalMs => Math.Max(1000, _settings.Current.ProcessWatchIntervalMs);
 
     public event EventHandler? PrimaryChanged;
 
@@ -74,11 +81,65 @@ public sealed class ProcessWatcherService : IDisposable
                 return;
             }
 
-            var interval = Math.Max(1000, _settings.Current.ProcessWatchIntervalMs);
+            var interval = PollIntervalMs;
             _timer ??= new System.Threading.Timer(_ => Poll(), null, Timeout.Infinite, Timeout.Infinite);
             _timer.Change(interval, interval);
-            AppLogger.Log($"Process watcher started (interval {interval} ms).");
+            AppLogger.Log($"Process watcher started (timer interval {interval} ms).");
         }
+
+        // Push-based detection: WMI notifies us the moment any process starts,
+        // so a matched game triggers the swap in ~1 s instead of up to a full
+        // poll interval. Runs outside the lock (WMI setup can block briefly).
+        StartProcessCreationWatcher();
+    }
+
+    /// <summary>
+    /// Subscribes to WMI process-creation events. On any new process we kick an
+    /// immediate poll, which runs the normal matching logic right away. Best
+    /// effort: if WMI is unavailable the timer poll still covers detection.
+    /// </summary>
+    private void StartProcessCreationWatcher()
+    {
+        lock (_lock)
+        {
+            if (_disposed || _startWatcher is not null)
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            // WITHIN 1 = WMI coalesces creation events on a 1-second window,
+            // the lowest reliable value without elevation.
+            var query = new WqlEventQuery(
+                "__InstanceCreationEvent",
+                TimeSpan.FromSeconds(1),
+                "TargetInstance ISA 'Win32_Process'");
+
+            var watcher = new ManagementEventWatcher(query);
+            watcher.EventArrived += OnProcessCreationEvent;
+            watcher.Start();
+
+            lock (_lock)
+            {
+                _startWatcher = watcher;
+            }
+
+            AppLogger.Log("Process-creation watcher active (WMI push detection).");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"WMI process-creation watcher unavailable; timer polling only. {ex.Message}");
+        }
+    }
+
+    private void OnProcessCreationEvent(object sender, EventArrivedEventArgs e)
+    {
+        // A new process appeared — run the matcher now rather than waiting for
+        // the next timer tick. The _polling guard coalesces bursts (a game
+        // launch spawns many processes) into non-overlapping polls.
+        Poll();
     }
 
     public void Stop()
@@ -86,6 +147,34 @@ public sealed class ProcessWatcherService : IDisposable
         lock (_lock)
         {
             _timer?.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+
+        StopProcessCreationWatcher();
+    }
+
+    private void StopProcessCreationWatcher()
+    {
+        ManagementEventWatcher? watcher;
+        lock (_lock)
+        {
+            watcher = _startWatcher;
+            _startWatcher = null;
+        }
+
+        if (watcher is null)
+        {
+            return;
+        }
+
+        try
+        {
+            watcher.EventArrived -= OnProcessCreationEvent;
+            watcher.Stop();
+            watcher.Dispose();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"WMI watcher stop error: {ex.Message}");
         }
     }
 
@@ -407,6 +496,8 @@ public sealed class ProcessWatcherService : IDisposable
 
     public void Dispose()
     {
+        StopProcessCreationWatcher();
+
         lock (_lock)
         {
             _disposed = true;
