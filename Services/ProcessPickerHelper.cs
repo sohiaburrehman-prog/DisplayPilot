@@ -137,9 +137,13 @@ public static class ProcessPickerHelper
 
     private static HashSet<string> GetRunningProcessNames()
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var process in Process.GetProcesses())
+        var processes = Process.GetProcesses();
+        // ⚡ Bolt optimization: pre-size HashSet using processes.Length to eliminate dynamic
+        // resizing allocations during the loop, and use a for-loop to avoid enumerator allocation.
+        var names = new HashSet<string>(processes.Length, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < processes.Length; i++)
         {
+            var process = processes[i];
             try
             {
                 names.Add(process.ProcessName);
