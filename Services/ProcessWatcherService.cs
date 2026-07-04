@@ -341,6 +341,15 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // Cache hit: if the same profile is still active, avoid the expensive Win32
+        // GetMonitors() call (which queries DisplayConfig and causes micro-stutters
+        // if called repeatedly on a timer).
+        var current = CurrentActiveProfile;
+        if (current is not null && current.ProfileId == active.Id)
+        {
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         var target = ProfileMatcher.ResolveTarget(active, monitors);
         var monitorLabel = target is not null
