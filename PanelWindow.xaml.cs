@@ -330,6 +330,9 @@ public partial class PanelWindow : Window
         ArrangementCanvas.Height = isTwoMonitorSwap
             ? layout.ContentHeight + 18
             : layout.ContentHeight;
+        MapScroll.HorizontalScrollBarVisibility = layout.NeedsHorizontalScroll
+            ? ScrollBarVisibility.Auto
+            : ScrollBarVisibility.Disabled;
 
         foreach (var tile in layout.Tiles)
         {

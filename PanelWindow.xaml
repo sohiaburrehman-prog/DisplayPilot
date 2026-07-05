@@ -193,7 +193,7 @@
                                     Margin="0,0,0,14"
                                     Visibility="Collapsed">
                                 <ScrollViewer x:Name="MapScroll"
-                                              HorizontalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled"
                                               VerticalScrollBarVisibility="Disabled"
                                               PanningMode="HorizontalOnly">
                                     <Canvas x:Name="ArrangementCanvas" ClipToBounds="False" />

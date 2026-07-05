@@ -2,6 +2,10 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.12] — 2026-07-05
+
+### Fixed
+- **Arrangement map scrollbar** — layout now measures actual tile bounds (including insets) instead of the scaled desktop span alone; when content fits the flyout map viewport within a 2 px tolerance, tiles are centered and the horizontal scrollbar stays hidden. Fixes an unnecessary left-to-right scrollbar on multi-monitor setups (e.g. 4K + ultrawide + edge display) introduced in v1.7.5
 
 ## [1.7.11] — 2026-07-05
 

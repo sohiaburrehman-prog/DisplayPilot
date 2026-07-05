@@ -360,6 +360,22 @@ Check(tripleLayout.Tiles[0].Left < tripleLayout.Tiles[1].Left &&
     "Three-monitor topology preserves left-to-right order");
 Check(tripleLayout.ContentWidth > 320,
     "Three-monitor desktop enables horizontal scrolling");
+Check(tripleLayout.NeedsHorizontalScroll,
+    "Three-monitor desktop reports horizontal scroll needed");
+
+// Flyout map viewport is ~326 px (380 window − margins/padding); wide desktops
+// that visually fit must not report a few pixels of overflow from tile insets.
+const double panelMapViewport = 326;
+var snugDual = new List<MonitorInfo>
+{
+    LayoutMonitor(0, 0, 0, 1280, 1024),
+    LayoutMonitor(1, 1280, 0, 1280, 1024),
+};
+var snugLayout = ArrangementMapLayout.Compute(snugDual, viewportWidth: panelMapViewport, mapHeight: 104);
+Check(!snugLayout.NeedsHorizontalScroll,
+    "Dual-monitor map that fits panel viewport does not enable horizontal scroll");
+Check(snugLayout.ContentWidth == panelMapViewport,
+    "Fitting dual-monitor map expands canvas to viewport width for centering");
 
 // ─────────────────── Settings JSON round-trip ───────────────────
 Console.WriteLine("\n== Settings JSON serialization round-trip ==");
