@@ -20,8 +20,7 @@ public sealed class DisplayManager
 {
     public IReadOnlyList<MonitorInfo> GetMonitors()
     {
-        var friendlyNames = GetFriendlyNamesByGdiDevice();
-        var configBounds = GetDisplayConfigBoundsByGdiDevice();
+        var (friendlyNames, configBounds) = GetDisplayConfigDetails();
         var monitors = new List<MonitorInfo>();
 
         for (uint deviceIndex = 0; ; deviceIndex++)
@@ -492,9 +491,15 @@ public sealed class DisplayManager
     /// Maps GDI device names to virtual-desktop bounds via DisplayConfig. Best-effort:
     /// returns an empty map on failure so callers can fall back to DEVMODE.
     /// </summary>
-    private static Dictionary<string, DisplayBounds> GetDisplayConfigBoundsByGdiDevice()
+    /// <summary>
+    /// Maps GDI device names to friendly monitor names and virtual-desktop bounds
+    /// via the DisplayConfig API. Best-effort: returns empty maps on any failure.
+    /// Combined to reduce expensive Win32 API calls (QueryDisplayConfig).
+    /// </summary>
+    private static (Dictionary<string, string> FriendlyNames, Dictionary<string, DisplayBounds> Bounds) GetDisplayConfigDetails()
     {
-        var map = new Dictionary<string, DisplayBounds>(StringComparer.OrdinalIgnoreCase);
+        var friendlyNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var bounds = new Dictionary<string, DisplayBounds>(StringComparer.OrdinalIgnoreCase);
 
         try
         {
@@ -512,7 +517,7 @@ public sealed class DisplayManager
                     header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
                     {
                         type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GetSourceName,
-                        size = (uint)Marshal.SizeOf<DISPLAYCONFIG_SOURCE_DEVICE_NAME>(),
+                        size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<DISPLAYCONFIG_SOURCE_DEVICE_NAME>(),
                         adapterId = path.sourceInfo.adapterId,
                         id = path.sourceInfo.id
                     }
@@ -524,87 +529,46 @@ public sealed class DisplayManager
                     continue;
                 }
 
-                var modeIdx = path.sourceInfo.modeInfoIdx;
-                if (modeIdx >= modes.Length)
-                {
-                    continue;
-                }
+                var gdiDeviceName = sourceRequest.viewGdiDeviceName;
 
-                ref var mode = ref modes[modeIdx];
-                if (mode.infoType != DISPLAYCONFIG_MODE_INFO.TypeSource)
-                {
-                    continue;
-                }
-
-                map[sourceRequest.viewGdiDeviceName] = new DisplayBounds(
-                    mode.sourceMode.position.x,
-                    mode.sourceMode.position.y,
-                    (int)mode.sourceMode.width,
-                    (int)mode.sourceMode.height);
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Log($"DisplayConfig bounds lookup failed: {ex.Message}");
-        }
-
-        return map;
-    }
-
-    /// <summary>
-    /// Maps GDI device names (\\.\DISPLAY1) to friendly monitor names via the
-    /// DisplayConfig API. Best-effort: returns an empty map on any failure.
-    /// </summary>
-    private static Dictionary<string, string> GetFriendlyNamesByGdiDevice()
-    {
-        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        try
-        {
-            var (paths, _) = QueryActiveConfig();
-
-            foreach (var path in paths)
-            {
-                if ((path.flags & DisplayconfigPathActive) == 0)
-                {
-                    continue;
-                }
-
-                var sourceRequest = new DISPLAYCONFIG_SOURCE_DEVICE_NAME
-                {
-                    header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
-                    {
-                        type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GetSourceName,
-                        size = (uint)Marshal.SizeOf<DISPLAYCONFIG_SOURCE_DEVICE_NAME>(),
-                        adapterId = path.sourceInfo.adapterId,
-                        id = path.sourceInfo.id
-                    }
-                };
-
+                // 1. Get Friendly Name
                 var targetRequest = new DISPLAYCONFIG_TARGET_DEVICE_NAME
                 {
                     header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
                     {
                         type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GetTargetName,
-                        size = (uint)Marshal.SizeOf<DISPLAYCONFIG_TARGET_DEVICE_NAME>(),
+                        size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<DISPLAYCONFIG_TARGET_DEVICE_NAME>(),
                         adapterId = path.targetInfo.adapterId,
                         id = path.targetInfo.id
                     }
                 };
 
-                if (DisplayConfigGetDeviceInfo(ref sourceRequest) == ErrorSuccess &&
-                    DisplayConfigGetDeviceInfo(ref targetRequest) == ErrorSuccess &&
-                    !string.IsNullOrWhiteSpace(sourceRequest.viewGdiDeviceName))
+                if (DisplayConfigGetDeviceInfo(ref targetRequest) == ErrorSuccess)
                 {
-                    map[sourceRequest.viewGdiDeviceName] = targetRequest.monitorFriendlyDeviceName;
+                    friendlyNames[gdiDeviceName] = targetRequest.monitorFriendlyDeviceName;
+                }
+
+                // 2. Get Bounds
+                var modeIdx = path.sourceInfo.modeInfoIdx;
+                if (modeIdx < modes.Length)
+                {
+                    ref var mode = ref modes[modeIdx];
+                    if (mode.infoType == DISPLAYCONFIG_MODE_INFO.TypeSource)
+                    {
+                        bounds[gdiDeviceName] = new DisplayBounds(
+                            mode.sourceMode.position.x,
+                            mode.sourceMode.position.y,
+                            (int)mode.sourceMode.width,
+                            (int)mode.sourceMode.height);
+                    }
                 }
             }
         }
         catch (Exception ex)
         {
-            AppLogger.Log($"Friendly name lookup failed: {ex.Message}");
+            AppLogger.Log($"DisplayConfig details lookup failed: {ex.Message}");
         }
 
-        return map;
+        return (friendlyNames, bounds);
     }
 }
