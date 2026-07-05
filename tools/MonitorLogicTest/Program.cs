@@ -345,8 +345,10 @@ var left4K = new List<MonitorInfo>
 var leftLayout = ArrangementMapLayout.Compute(left4K, viewportWidth: 320, mapHeight: 104);
 Check(leftLayout.Tiles[0].Left < leftLayout.Tiles[1].Left,
     "4K monitor left of ultrawide renders to the left in the map");
-Check(leftLayout.ContentWidth > 320,
-    "Wide dual-monitor desktop exceeds viewport width for horizontal scroll");
+Check(!leftLayout.NeedsHorizontalScroll,
+    "Wide dual-monitor desktop fits viewport without horizontal scroll");
+Check(leftLayout.ContentWidth == 320,
+    "Wide dual-monitor map canvas matches viewport width");
 
 var wideTriple = new List<MonitorInfo>
 {
@@ -376,6 +378,31 @@ Check(!snugLayout.NeedsHorizontalScroll,
     "Dual-monitor map that fits panel viewport does not enable horizontal scroll");
 Check(snugLayout.ContentWidth == panelMapViewport,
     "Fitting dual-monitor map expands canvas to viewport width for centering");
+
+var dual1080p = new List<MonitorInfo>
+{
+    LayoutMonitor(0, 0, 0, 1920, 1080),
+    LayoutMonitor(1, 1920, 0, 1920, 1080),
+};
+var dual1080Layout = ArrangementMapLayout.Compute(dual1080p, viewportWidth: panelMapViewport, mapHeight: 104);
+Check(!dual1080Layout.NeedsHorizontalScroll,
+    "Dual 1080p side-by-side fits panel without horizontal scroll");
+Check(dual1080Layout.ContentWidth == panelMapViewport,
+    "Dual 1080p map canvas matches viewport width");
+Check(dual1080Layout.Tiles[1].Left + dual1080Layout.Tiles[1].Width + 2 <= panelMapViewport,
+    "Dual 1080p tiles stay within viewport width");
+
+var ultrawide4K = new List<MonitorInfo>
+{
+    LayoutMonitor(0, 0, 0, 3440, 1440),
+    LayoutMonitor(1, 3440, 0, 3840, 2160),
+};
+const double flyoutMapViewport = 380;
+var ultrawideLayout = ArrangementMapLayout.Compute(ultrawide4K, viewportWidth: flyoutMapViewport, mapHeight: 104);
+Check(!ultrawideLayout.NeedsHorizontalScroll,
+    "Ultrawide + 4K dual setup fits flyout map without horizontal scroll");
+Check(ultrawideLayout.ContentWidth == flyoutMapViewport,
+    "Ultrawide + 4K map fills viewport when content fits");
 
 // ─────────────────── Settings JSON round-trip ───────────────────
 Console.WriteLine("\n== Settings JSON serialization round-trip ==");

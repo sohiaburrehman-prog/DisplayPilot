@@ -333,6 +333,10 @@ public partial class PanelWindow : Window
         MapScroll.HorizontalScrollBarVisibility = layout.NeedsHorizontalScroll
             ? ScrollBarVisibility.Auto
             : ScrollBarVisibility.Disabled;
+        if (!layout.NeedsHorizontalScroll)
+        {
+            MapScroll.ScrollToHorizontalOffset(0);
+        }
 
         foreach (var tile in layout.Tiles)
         {
