@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.13] — 2026-07-05
+
+### Fixed
+- **Arrangement map scrollbar (dual monitor)** — two-display setups now scale to fit the flyout map width instead of height-only scaling (~349 px tile span vs ~326 px viewport on typical 1920×1080 pairs). Horizontal scroll stays enabled only for three or more monitors when the desktop exceeds the viewport
+
 ## [1.7.12] — 2026-07-05
 
 ### Fixed
