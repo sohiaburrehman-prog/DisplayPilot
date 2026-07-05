@@ -2,6 +2,12 @@
 
 All notable changes to DisplayPilot are documented here.
 
+
+## [1.7.11] — 2026-07-05
+
+### Performance
+- **GetMonitors** — merged friendly-name and bounds DisplayConfig lookups into `GetDisplayConfigDetails` (PR #18); halves expensive `QueryActiveConfig` Win32 calls and reduces micro-stutters when monitor enumeration runs on a timer
+
 ## [1.7.10] — 2026-07-05
 
 ### Fixed
