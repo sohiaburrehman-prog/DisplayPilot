@@ -40,12 +40,16 @@ public partial class SettingsWindow : Window
         InitializeComponent();
 
         PreviewKeyDown += OnPreviewKeyDown;
-        Loaded += OnLoaded;
+        ContentRendered += OnContentRendered;
 
         LoadFromSettings();
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e) => FitHeightToContent();
+    private void OnContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= OnContentRendered;
+        FitHeightToContent();
+    }
 
     /// <summary>
     /// Expand to fit all sections at open so the ScrollViewer stays hidden at default
@@ -54,17 +58,34 @@ public partial class SettingsWindow : Window
     private void FitHeightToContent()
     {
         const double scrollVerticalMargin = 20; // ScrollViewer Margin 12 + 8
+        const double layoutSlack = 4; // DPI rounding / scroll-bar gutter
+
+        var root = (Grid)Content;
+        root.UpdateLayout();
+        UpdateLayout();
+
+        // Window.Height is outer size (title bar + frame); inner rows were summed without chrome.
+        var chromeHeight = ActualHeight - root.ActualHeight;
+        if (chromeHeight < 1)
+        {
+            // Rare before first layout; typical Win11 title bar + frame ≈ 39–48 DIP.
+            chromeHeight = 48;
+        }
 
         var contentWidth = Math.Max(0, ActualWidth - 32); // horizontal ScrollViewer margin 16×2
         SettingsContent.Measure(new Size(contentWidth, double.PositiveInfinity));
         SettingsContent.UpdateLayout();
 
-        var needed = HeaderBorder.ActualHeight
-                     + FooterBorder.ActualHeight
-                     + scrollVerticalMargin
-                     + SettingsContent.DesiredSize.Height;
+        var contentHeight = SettingsContent.ActualHeight > 0
+            ? SettingsContent.ActualHeight
+            : SettingsContent.DesiredSize.Height;
 
-        var target = Math.Ceiling(needed);
+        var innerNeeded = HeaderBorder.ActualHeight
+                          + FooterBorder.ActualHeight
+                          + scrollVerticalMargin
+                          + contentHeight;
+
+        var target = Math.Ceiling(innerNeeded + chromeHeight + layoutSlack);
         if (Height < target)
         {
             Height = target;

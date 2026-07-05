@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.10] — 2026-07-05
+
+### Fixed
+- **Settings window height** — `FitHeightToContent` now adds non-client window chrome (title bar + frame) to the measured inner layout; sizing runs on `ContentRendered` so header/footer/content heights are final. Eliminates the ~20–40 px scrollbar and clipped “Check now” button on 4K at 100%/150% DPI
+
 ## [1.7.9] — 2026-07-04
 
 ### Performance
