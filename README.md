@@ -159,6 +159,14 @@ dotnet run --project tools\MonitorLogicTest -c Release    # logic suite (branch,
 dotnet run --project tools\SwapTest -c Release -- --modes # dry-run: dump available modes per monitor
 ```
 
+## License
+
+| Scope | Terms |
+| --- | --- |
+| **Source code** (this repository) | [MIT](LICENSE) — Copyright (c) Sohiab Rehman |
+| **Installed application** (releases, installer, portable zip) | Proprietary [End User License Agreement](docs/legal/EULA.txt) |
+| **Third-party components** | [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) |
+
 ## Stack
 
 C# / .NET 8 — WPF flyout + WinForms `NotifyIcon` tray, with DisplayConfig + `CDS_SET_PRIMARY` fallback for reliable primary-monitor switching on Windows 10/11.

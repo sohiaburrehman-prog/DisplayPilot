@@ -6,10 +6,13 @@ internal static class LegalDocuments
 {
     public const string EulaTitle = "End User License Agreement";
     public const string PrivacyTitle = "Privacy Policy";
+    public const string ThirdPartyNoticesTitle = "Third-Party Notices";
 
     public static string LoadEula() => LoadEmbedded("PrimaryDisplaySwap.docs.legal.EULA.txt");
 
     public static string LoadPrivacyPolicy() => LoadEmbedded("PrimaryDisplaySwap.docs.legal.PrivacyPolicy.txt");
+
+    public static string LoadThirdPartyNotices() => LoadEmbedded("PrimaryDisplaySwap.THIRD-PARTY-NOTICES.md");
 
     private static string LoadEmbedded(string resourceName)
     {

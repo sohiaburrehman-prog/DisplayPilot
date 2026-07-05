@@ -345,6 +345,10 @@ internal sealed class TrayService : IDisposable
         privacyItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.PrivacyTitle, LegalDocuments.LoadPrivacyPolicy);
         menu.Items.Add(privacyItem);
 
+        var noticesItem = CreateActionItem("Third-Party Notices");
+        noticesItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.ThirdPartyNoticesTitle, LegalDocuments.LoadThirdPartyNotices);
+        menu.Items.Add(noticesItem);
+
         menu.Items.Add(new ToolStripSeparator());
 
         var helpItem = CreateActionItem("Help && support");

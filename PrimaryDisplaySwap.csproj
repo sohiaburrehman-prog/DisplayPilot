@@ -59,6 +59,7 @@
     <Resource Include="Assets\AppIcon.ico" />
     <EmbeddedResource Include="docs\legal\EULA.txt" />
     <EmbeddedResource Include="docs\legal\PrivacyPolicy.txt" />
+    <EmbeddedResource Include="THIRD-PARTY-NOTICES.md" />
     <EmbeddedResource Include="CHANGELOG.md" />
   </ItemGroup>
 
