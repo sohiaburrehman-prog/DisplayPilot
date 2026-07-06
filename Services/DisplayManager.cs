@@ -100,7 +100,21 @@ public sealed class DisplayManager
             if (VerifyPrimary(target.DeviceName))
             {
                 AppLogger.Log($"Primary display set via DisplayConfig to {target.Name} ({target.DeviceName}).");
-                return GetMonitors().First(m => string.Equals(m.DeviceName, target.DeviceName, StringComparison.OrdinalIgnoreCase));
+
+                // ⚡ Bolt: Construct and return the new primary monitor state directly to avoid a redundant,
+                // expensive Win32 GetMonitors() call just to fetch the updated state.
+                return new MonitorInfo
+                {
+                    Index = target.Index,
+                    DeviceName = target.DeviceName,
+                    Name = target.Name,
+                    Width = target.Width,
+                    Height = target.Height,
+                    PositionX = 0,
+                    PositionY = 0,
+                    IsPrimary = true,
+                    RefreshRateHz = target.RefreshRateHz
+                };
             }
 
             lastError = "DisplayConfig applied but the primary monitor did not change.";
@@ -117,7 +131,21 @@ public sealed class DisplayManager
             if (VerifyPrimary(target.DeviceName))
             {
                 AppLogger.Log($"Primary display set via ChangeDisplaySettingsEx to {target.Name} ({target.DeviceName}).");
-                return GetMonitors().First(m => string.Equals(m.DeviceName, target.DeviceName, StringComparison.OrdinalIgnoreCase));
+
+                // ⚡ Bolt: Construct and return the new primary monitor state directly to avoid a redundant,
+                // expensive Win32 GetMonitors() call just to fetch the updated state.
+                return new MonitorInfo
+                {
+                    Index = target.Index,
+                    DeviceName = target.DeviceName,
+                    Name = target.Name,
+                    Width = target.Width,
+                    Height = target.Height,
+                    PositionX = 0,
+                    PositionY = 0,
+                    IsPrimary = true,
+                    RefreshRateHz = target.RefreshRateHz
+                };
             }
 
             lastError = "ChangeDisplaySettingsEx applied but the primary monitor did not change.";
