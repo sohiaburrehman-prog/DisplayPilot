@@ -225,6 +225,9 @@ public sealed class ProcessWatcherService : IDisposable
             var runningNames = GetRunningProcessNames();
             var detectedChildren = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+            // ⚡ Bolt: Cache monitor enumeration to eliminate multiple expensive Win32 queries in a single poll tick.
+            var monitorsCache = new Lazy<IReadOnlyList<MonitorInfo>>(() => _displayManager.GetMonitors());
+
             foreach (var profile in profiles)
             {
                 if (!LauncherChildTracker.IsLauncherProfile(profile))
@@ -261,15 +264,21 @@ public sealed class ProcessWatcherService : IDisposable
 
                 if (isRunning && !wasRunning)
                 {
-                    OnProcessStarted(profile);
+                    if (OnProcessStarted(profile, monitorsCache))
+                    {
+                        monitorsCache = new Lazy<IReadOnlyList<MonitorInfo>>(() => _displayManager.GetMonitors());
+                    }
                 }
                 else if (!isRunning && wasRunning)
                 {
-                    OnProcessExited(profile);
+                    if (OnProcessExited(profile, monitorsCache))
+                    {
+                        monitorsCache = new Lazy<IReadOnlyList<MonitorInfo>>(() => _displayManager.GetMonitors());
+                    }
                 }
             }
 
-            UpdateCurrentActiveProfile(profiles, runningNames, detectedChildren);
+            UpdateCurrentActiveProfile(profiles, runningNames, detectedChildren, monitorsCache);
 
             // Forget state for profiles that no longer exist.
             var liveIds = profiles.Select(p => p.Id).ToHashSet();
@@ -294,25 +303,25 @@ public sealed class ProcessWatcherService : IDisposable
         }
     }
 
-    private void OnProcessStarted(AppProfile profile)
+    private bool OnProcessStarted(AppProfile profile, Lazy<IReadOnlyList<MonitorInfo>> monitorsCache)
     {
         try
         {
             var label = profile.DisplayLabel;
-            var monitors = _displayManager.GetMonitors();
+            var monitors = monitorsCache.Value;
             var target = ProfileMatcher.ResolveTarget(profile, monitors);
             if (target is null)
             {
                 AppLogger.Log(
                     $"Profile activate skipped [{label}]: target '{profile.TargetMonitorName}' " +
                     $"(device {profile.TargetMonitorDeviceName}) not among {monitors.Count} connected display(s).");
-                return;
+                return false;
             }
 
             if (target.IsPrimary)
             {
                 AppLogger.Log($"Profile skip [{label}]: '{target.Name}' ({target.DeviceName}) is already primary.");
-                return;
+                return false;
             }
 
             var currentPrimary = monitors.FirstOrDefault(m => m.IsPrimary);
@@ -335,14 +344,16 @@ public sealed class ProcessWatcherService : IDisposable
                 $"Profile activated [{label}]: primary set to '{displayName}' ({target.DeviceName}).");
             StatusMessage?.Invoke(this, $"Auto-swap: {displayName} is now primary.");
             PrimaryChanged?.Invoke(this, EventArgs.Empty);
+            return true;
         }
         catch (Exception ex)
         {
             AppLogger.LogException($"ProcessWatcher start '{profile.DisplayLabel}'", ex);
+            return false;
         }
     }
 
-    private void OnProcessExited(AppProfile profile)
+    private bool OnProcessExited(AppProfile profile, Lazy<IReadOnlyList<MonitorInfo>> monitorsCache)
     {
         try
         {
@@ -351,19 +362,19 @@ public sealed class ProcessWatcherService : IDisposable
             {
                 _previousPrimary.Remove(profile.Id);
                 AppLogger.Log($"Profile exit [{label}]: restore-on-exit disabled; leaving primary unchanged.");
-                return;
+                return false;
             }
 
             if (!_previousPrimary.TryGetValue(profile.Id, out var previousDevice) ||
                 string.IsNullOrWhiteSpace(previousDevice))
             {
                 AppLogger.Log($"Profile exit [{label}]: no saved previous primary to restore.");
-                return;
+                return false;
             }
 
             _previousPrimary.Remove(profile.Id);
 
-            var monitors = _displayManager.GetMonitors();
+            var monitors = monitorsCache.Value;
             var previous = monitors.FirstOrDefault(m =>
                 string.Equals(m.DeviceName, previousDevice, StringComparison.OrdinalIgnoreCase));
 
@@ -372,13 +383,13 @@ public sealed class ProcessWatcherService : IDisposable
                 AppLogger.Log(
                     $"Profile restore skipped [{label}]: previous primary device '{previousDevice}' " +
                     $"not among {monitors.Count} connected display(s).");
-                return;
+                return false;
             }
 
             if (previous.IsPrimary)
             {
                 AppLogger.Log($"Profile restore skip [{label}]: '{previous.Name}' is already primary.");
-                return;
+                return false;
             }
 
             _displayManager.SetPrimaryByDeviceName(previous.DeviceName);
@@ -387,10 +398,12 @@ public sealed class ProcessWatcherService : IDisposable
                 $"Profile restored [{label}]: primary returned to '{displayName}' ({previous.DeviceName}).");
             StatusMessage?.Invoke(this, $"Auto-swap: restored {displayName} as primary.");
             PrimaryChanged?.Invoke(this, EventArgs.Empty);
+            return true;
         }
         catch (Exception ex)
         {
             AppLogger.LogException($"ProcessWatcher exit '{profile.DisplayLabel}'", ex);
+            return false;
         }
     }
 
@@ -411,7 +424,8 @@ public sealed class ProcessWatcherService : IDisposable
     private void UpdateCurrentActiveProfile(
         IReadOnlyList<AppProfile> profiles,
         HashSet<string> runningNames,
-        Dictionary<string, string> detectedChildren)
+        Dictionary<string, string> detectedChildren,
+        Lazy<IReadOnlyList<MonitorInfo>> monitorsCache)
     {
         AppProfile? active = null;
         foreach (var profile in profiles)
@@ -439,7 +453,7 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
-        var monitors = _displayManager.GetMonitors();
+        var monitors = monitorsCache.Value;
         var target = ProfileMatcher.ResolveTarget(active, monitors);
         var monitorLabel = target is not null
             ? MonitorDisplayHelper.GetDisplayName(target, _settings.Current)
