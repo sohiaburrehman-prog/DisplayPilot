@@ -4,3 +4,6 @@
 ## 2024-05-24 - `QueryActiveConfig` is an expensive Win32 call
 **Learning:** `QueryActiveConfig` (which wraps `QueryDisplayConfig`) is an expensive Win32 API call. When retrieving monitor information, we were making this call twice: once for friendly names and once for virtual-desktop bounds.
 **Action:** Combine operations that rely on `QueryActiveConfig` into a single loop to halve the number of expensive system calls and reduce micro-stutters when `GetMonitors` is called.
+## 2026-07-07 - `GetMonitors` caching optimization
+**Learning:** Found redundant `GetMonitors()` calls in the same method loop chain, causing expensive Win32 OS-level API queries multiple times unnecessarily when auto-swapping monitors during profiling.
+**Action:** Always thread a nullable cache of monitors through methods that check monitor state sequentially to save redundant Win32 queries, invalidating it immediately whenever state is actually mutated (e.g. `SetPrimaryMonitor`).

@@ -74,9 +74,9 @@ public sealed class DisplayManager
     }
 
     /// <summary>Makes the monitor at <paramref name="monitorIndex"/> primary. Returns the new primary.</summary>
-    public MonitorInfo SetPrimaryMonitor(int monitorIndex)
+    public MonitorInfo SetPrimaryMonitor(int monitorIndex, IReadOnlyList<MonitorInfo>? knownMonitors = null)
     {
-        var monitors = GetMonitors();
+        var monitors = knownMonitors ?? GetMonitors();
         if (monitors.Count <= 1)
         {
             throw new InvalidOperationException("Only one monitor is connected — nothing to swap.");
@@ -149,9 +149,9 @@ public sealed class DisplayManager
     /// Makes the monitor with the given GDI device name primary. Used by
     /// auto-swap profiles. Throws if the device is not currently connected.
     /// </summary>
-    public MonitorInfo SetPrimaryByDeviceName(string deviceName)
+    public MonitorInfo SetPrimaryByDeviceName(string deviceName, IReadOnlyList<MonitorInfo>? knownMonitors = null)
     {
-        var monitors = GetMonitors();
+        var monitors = knownMonitors ?? GetMonitors();
         var target = monitors.FirstOrDefault(m =>
             string.Equals(m.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
 
@@ -160,7 +160,7 @@ public sealed class DisplayManager
             throw new InvalidOperationException($"Display {deviceName} is not currently connected.");
         }
 
-        return SetPrimaryMonitor(target.Index);
+        return SetPrimaryMonitor(target.Index, monitors);
     }
 
     /// <summary>
