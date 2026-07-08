@@ -35,6 +35,12 @@ public sealed class ProcessWatcherService : IDisposable
     private readonly Dictionary<string, LauncherChildTracker.WatchState> _launcherWatch = new();
     private readonly Dictionary<string, bool> _launcherRunningState = new();
 
+    // Reused collections for the polling loop to prevent GC allocations on every tick.
+    private readonly HashSet<string> _runningNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _detectedChildren = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _staleIds = new();
+    private readonly List<AppProfile> _activeProfiles = new();
+
     private System.Threading.Timer? _timer;
     private ManagementEventWatcher? _startWatcher;
     private bool _polling;
@@ -208,11 +214,18 @@ public sealed class ProcessWatcherService : IDisposable
 
         try
         {
-            var profiles = _settings.Current.Profiles
-                .Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.ProcessName))
-                .ToList();
+            _activeProfiles.Clear();
+            var rawProfiles = _settings.Current.Profiles;
+            for (var i = 0; i < rawProfiles.Count; i++)
+            {
+                var p = rawProfiles[i];
+                if (p.Enabled && !string.IsNullOrWhiteSpace(p.ProcessName))
+                {
+                    _activeProfiles.Add(p);
+                }
+            }
 
-            if (profiles.Count == 0)
+            if (_activeProfiles.Count == 0)
             {
                 _runningState.Clear();
                 _previousPrimary.Clear();
@@ -222,11 +235,13 @@ public sealed class ProcessWatcherService : IDisposable
                 return;
             }
 
-            var runningNames = GetRunningProcessNames();
-            var detectedChildren = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            GetRunningProcessNames(_runningNames);
+            _detectedChildren.Clear();
 
-            foreach (var profile in profiles)
+            for (var i = 0; i < _activeProfiles.Count; i++)
             {
+                var profile = _activeProfiles[i];
+
                 if (!LauncherChildTracker.IsLauncherProfile(profile))
                 {
                     _launcherWatch.Remove(profile.Id);
@@ -234,7 +249,7 @@ public sealed class ProcessWatcherService : IDisposable
                     continue;
                 }
 
-                var launcherRunning = runningNames.Contains(profile.NormalizedProcessName);
+                var launcherRunning = _runningNames.Contains(profile.NormalizedProcessName);
                 var launcherWasRunning = _launcherRunningState.TryGetValue(profile.Id, out var was) && was;
                 _launcherRunningState[profile.Id] = launcherRunning;
 
@@ -245,17 +260,19 @@ public sealed class ProcessWatcherService : IDisposable
                 }
 
                 var child = LauncherChildTracker.UpdateWatchState(
-                    profile, watchState, runningNames, launcherWasRunning, launcherRunning);
+                    profile, watchState, _runningNames, launcherWasRunning, launcherRunning);
                 if (!string.IsNullOrWhiteSpace(child))
                 {
-                    detectedChildren[profile.Id] = child;
+                    _detectedChildren[profile.Id] = child;
                 }
             }
 
-            foreach (var profile in profiles)
+            for (var i = 0; i < _activeProfiles.Count; i++)
             {
-                detectedChildren.TryGetValue(profile.Id, out var detectedChild);
-                var isRunning = ProfileMatcher.IsProfileActive(profile, runningNames, detectedChild);
+                var profile = _activeProfiles[i];
+
+                _detectedChildren.TryGetValue(profile.Id, out var detectedChild);
+                var isRunning = ProfileMatcher.IsProfileActive(profile, _runningNames, detectedChild);
                 var wasRunning = _runningState.TryGetValue(profile.Id, out var prev) && prev;
                 _runningState[profile.Id] = isRunning;
 
@@ -269,12 +286,30 @@ public sealed class ProcessWatcherService : IDisposable
                 }
             }
 
-            UpdateCurrentActiveProfile(profiles, runningNames, detectedChildren);
+            UpdateCurrentActiveProfile(_activeProfiles, _runningNames, _detectedChildren);
 
             // Forget state for profiles that no longer exist.
-            var liveIds = profiles.Select(p => p.Id).ToHashSet();
-            foreach (var staleId in _runningState.Keys.Where(k => !liveIds.Contains(k)).ToList())
+            _staleIds.Clear();
+            foreach (var k in _runningState.Keys)
             {
+                var isLive = false;
+                for (var i = 0; i < _activeProfiles.Count; i++)
+                {
+                    if (_activeProfiles[i].Id == k)
+                    {
+                        isLive = true;
+                        break;
+                    }
+                }
+                if (!isLive)
+                {
+                    _staleIds.Add(k);
+                }
+            }
+
+            for (var i = 0; i < _staleIds.Count; i++)
+            {
+                var staleId = _staleIds[i];
                 _runningState.Remove(staleId);
                 _previousPrimary.Remove(staleId);
                 _launcherWatch.Remove(staleId);
@@ -470,10 +505,10 @@ public sealed class ProcessWatcherService : IDisposable
         ActiveProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public static HashSet<string> GetRunningProcessNames()
+    public static void GetRunningProcessNames(HashSet<string> names)
     {
+        names.Clear();
         var processes = Process.GetProcesses();
-        var names = new HashSet<string>(processes.Length, StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < processes.Length; i++)
         {
             var process = processes[i];
@@ -490,7 +525,12 @@ public sealed class ProcessWatcherService : IDisposable
                 process.Dispose();
             }
         }
+    }
 
+    public static HashSet<string> GetRunningProcessNames()
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        GetRunningProcessNames(names);
         return names;
     }
 
