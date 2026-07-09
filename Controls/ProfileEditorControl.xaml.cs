@@ -42,6 +42,7 @@ public partial class ProfileEditorControl : UserControl
         ProcessNameBox.Text = string.Empty;
         ResolvedTargetBox.Text = string.Empty;
         RestoreOnExitCheck.IsChecked = true;
+        MoveWindowCheck.IsChecked = true;
         PopulateRunningProcesses();
         PopulateMonitorCombo();
         UpdateResolvedTargetVisibility();
@@ -63,6 +64,7 @@ public partial class ProfileEditorControl : UserControl
         ProcessNameBox.Text = profile.ProcessName;
         ResolvedTargetBox.Text = profile.ResolvedTargetProcessName;
         RestoreOnExitCheck.IsChecked = profile.RestoreOnExit;
+        MoveWindowCheck.IsChecked = profile.MoveWindowToTarget;
         PopulateRunningProcesses();
         PopulateMonitorCombo();
         UpdateResolvedTargetVisibility();
@@ -256,6 +258,7 @@ public partial class ProfileEditorControl : UserControl
 
         var monitor = monitorItem.Monitor;
         var restore = RestoreOnExitCheck.IsChecked == true;
+        var moveWindow = MoveWindowCheck.IsChecked == true;
         var resolvedTarget = LauncherCatalog.IsKnownLauncher(processName)
             ? ResolvedTargetBox.Text.Trim()
             : string.Empty;
@@ -275,6 +278,7 @@ public partial class ProfileEditorControl : UserControl
                     TargetMonitorName = monitor.Name,
                     TargetMonitorDeviceName = monitor.DeviceName,
                     RestoreOnExit = restore,
+                    MoveWindowToTarget = moveWindow,
                     Enabled = true,
                 });
             }
@@ -285,6 +289,7 @@ public partial class ProfileEditorControl : UserControl
                 existing.TargetMonitorName = monitor.Name;
                 existing.TargetMonitorDeviceName = monitor.DeviceName;
                 existing.RestoreOnExit = restore;
+                existing.MoveWindowToTarget = moveWindow;
             }
         });
 

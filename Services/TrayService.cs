@@ -17,6 +17,7 @@ internal sealed class TrayService : IDisposable
     private readonly StartupService _startupService;
     private readonly SettingsService _settings;
     private readonly ProcessWatcherService? _processWatcher;
+    private readonly WindowRelocationService _windowRelocation;
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
     private readonly Icon _trayIcon;
@@ -42,6 +43,7 @@ internal sealed class TrayService : IDisposable
         _startupService = startupService;
         _settings = settings;
         _processWatcher = processWatcher;
+        _windowRelocation = new WindowRelocationService(displayManager);
         _trayIcon = AppIconHelper.LoadTrayIcon();
 
         _menu = new ContextMenuStrip
@@ -240,7 +242,8 @@ internal sealed class TrayService : IDisposable
         {
             try
             {
-                var result = ProfileApplyService.TryApply(profile, _settings.Current, _displayManager, _settings);
+                var result = ProfileApplyService.TryApply(
+                    profile, _settings.Current, _displayManager, _settings, _windowRelocation);
                 if (result.Applied)
                 {
                     ShowFeedback($"Profile applied — {result.Message}");

@@ -73,6 +73,13 @@ public sealed class AppProfile
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// After the swap, move the game's main window onto the target monitor if
+    /// it opened elsewhere. Fixes games that pick their display during engine
+    /// init, before the primary swap lands (launch race).
+    /// </summary>
+    public bool MoveWindowToTarget { get; set; } = true;
+
+    /// <summary>
     /// When <see cref="ProcessName"/> is a launcher, also match a game exe that
     /// appears after the launcher starts (when no resolved target is set).
     /// </summary>
@@ -137,6 +144,7 @@ public sealed class AppProfile
         TargetMonitorDeviceName = TargetMonitorDeviceName,
         RestoreOnExit = RestoreOnExit,
         Enabled = Enabled,
+        MoveWindowToTarget = MoveWindowToTarget,
         MatchLauncherChildren = MatchLauncherChildren,
         LastTriggeredUtc = LastTriggeredUtc,
     };

@@ -18,7 +18,8 @@ public static class ProfileApplyService
         AppProfile profile,
         AppSettings settings,
         DisplayManager displayManager,
-        SettingsService? settingsService = null)
+        SettingsService? settingsService = null,
+        WindowRelocationService? windowRelocation = null)
     {
         if (profile is null || !profile.Enabled)
         {
@@ -52,6 +53,11 @@ public static class ProfileApplyService
         RecordProfileUsed(profile, settingsService);
         AppLogger.Log(
             $"Profile applied [{profile.DisplayLabel}]: primary set to '{displayName}' ({target.DeviceName}).");
+
+        // If the game is already running with its window on another monitor
+        // (e.g. it launched before the swap), move it onto the target.
+        windowRelocation?.BeginWatch(profile, detectedLauncherChild: null);
+
         return new ApplyResult
         {
             Applied = true,

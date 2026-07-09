@@ -23,6 +23,7 @@ public sealed class ProcessWatcherService : IDisposable
 {
     private readonly SettingsService _settings;
     private readonly DisplayManager _displayManager;
+    private readonly WindowRelocationService _windowRelocation;
     private readonly object _lock = new();
 
     // Per-profile id: was the process running at the last poll?
@@ -70,6 +71,8 @@ public sealed class ProcessWatcherService : IDisposable
     {
         _settings = settings;
         _displayManager = displayManager;
+        _windowRelocation = new WindowRelocationService(displayManager);
+        _windowRelocation.StatusMessage += (_, msg) => StatusMessage?.Invoke(this, msg);
     }
 
     public void Start()
@@ -261,7 +264,7 @@ public sealed class ProcessWatcherService : IDisposable
 
                 if (isRunning && !wasRunning)
                 {
-                    OnProcessStarted(profile);
+                    OnProcessStarted(profile, detectedChild);
                 }
                 else if (!isRunning && wasRunning)
                 {
@@ -294,7 +297,7 @@ public sealed class ProcessWatcherService : IDisposable
         }
     }
 
-    private void OnProcessStarted(AppProfile profile)
+    private void OnProcessStarted(AppProfile profile, string? detectedLauncherChild)
     {
         try
         {
@@ -335,6 +338,11 @@ public sealed class ProcessWatcherService : IDisposable
                 $"Profile activated [{label}]: primary set to '{displayName}' ({target.DeviceName}).");
             StatusMessage?.Invoke(this, $"Auto-swap: {displayName} is now primary.");
             PrimaryChanged?.Invoke(this, EventArgs.Empty);
+
+            // The game may have already created its window on the old primary
+            // (games pick a display during engine init, often before the swap
+            // above lands). Watch for the game window and move it if needed.
+            _windowRelocation.BeginWatch(profile, detectedLauncherChild);
         }
         catch (Exception ex)
         {

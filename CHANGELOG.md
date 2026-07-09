@@ -2,6 +2,11 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.14] — 2026-07-09
+
+### Added
+- **Window rescue after auto-swap** — games that pick their display during engine init (before the primary swap lands, e.g. 007 First Light) are now handled: after a profile swap, DisplayPilot waits for the game's main window to appear and settle, then moves it onto the target monitor automatically. Borderless/fullscreen windows cover the target exactly; windowed apps are centered; maximized windows re-maximize on the target. One retry a few seconds later covers titles that re-assert their display. Per-profile toggle in the profile editor (on by default); manual "Apply profile" from the tray also rescues an already-running game's window
+
 ## [1.7.13] — 2026-07-05
 
 ### Fixed
