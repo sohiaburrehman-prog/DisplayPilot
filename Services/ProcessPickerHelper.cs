@@ -11,6 +11,9 @@ public static class ProcessPickerHelper
         "dwm", "fontdrvhost", "sihost", "taskhostw", "runtimebroker", "searchhost",
         "explorer", "dllhost", "conhost", "audiodg", "spoolsv", "ctfmon", "winlogon",
         "securityhealthservice", "searchindexer", "msedgewebview2", "gamebarpresencewriter",
+        "steamwebhelper", "epicwebhelper", "eabackgroundservice", "originwebhelperservice",
+        "ubisoftconnectwebcore", "galaxycommunication", "crashpad_handler",
+        "cefsharp.browsersubprocess", "unitycrashhandler32", "unitycrashhandler64",
     };
 
     public sealed class ProcessGroup

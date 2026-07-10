@@ -96,7 +96,7 @@ internal static class ProfileUiHelper
             }
         }
 
-        var detail = $"→ {targetLabel}";
+        var detail = $"→ {targetLabel}  ·  priority {profile.Priority}";
         if (profile.RestoreOnExit)
         {
             detail += "  ·  restores on exit";

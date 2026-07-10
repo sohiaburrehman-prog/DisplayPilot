@@ -2,6 +2,21 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [1.7.15] — 2026-07-10
+
+### Added
+- **HDR toggle per monitor** — an HDR checkbox on each monitor card in the flyout's Advanced tab (shown only when the display reports HDR support). Uses the Windows 11 24H2 `SET_HDR_STATE` DisplayConfig API with automatic fallback to the legacy advanced-color toggle on older builds (Win10 1709+)
+- **HDR via CLI** — `--set-hdr <monitor> on|off` (0-based index, friendly name, or device name); `--list-monitors` now includes `HdrSupported` / `HdrEnabled` per display
+- **Profile conflict rules** — profiles now have a numeric priority, with selectable highest-priority or most-recently-activated winner policies and stack-safe restoration when overlapping apps exit
+- **Expanded scripting CLI** — list and apply profiles/layout presets by name or stable ID, change projection mode, and add `--json` to any command for a consistent success/error envelope
+
+### Fixed
+- Launcher child detection now verifies WMI PID ancestry instead of selecting the first unrelated process that appears, and detected games remain active after their launcher exits
+- Disabling or deleting an active winning profile now promotes the next match or restores the original session primary
+- Layout presets preflight all modes and roll back earlier changes when an apply fails
+- Settings imports no longer report success when the settings file could not be written
+- Single-instance synchronization uses one Windows session scope, and installer/winget metadata now matches v1.7.15
+
 ## [1.7.14] — 2026-07-09
 
 ### Added

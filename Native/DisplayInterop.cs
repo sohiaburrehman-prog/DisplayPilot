@@ -124,6 +124,20 @@ internal static class DisplayInterop
 
     [DllImport("user32.dll")]
     public static extern int DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_SOURCE_DEVICE_NAME request);
+
+    // ---- Advanced color / HDR ----
+
+    [DllImport("user32.dll")]
+    public static extern int DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO request);
+
+    [DllImport("user32.dll")]
+    public static extern int DisplayConfigGetDeviceInfo(ref DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2 request);
+
+    [DllImport("user32.dll")]
+    public static extern int DisplayConfigSetDeviceInfo(ref DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE request);
+
+    [DllImport("user32.dll")]
+    public static extern int DisplayConfigSetDeviceInfo(ref DISPLAYCONFIG_SET_HDR_STATE request);
 }
 
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -274,7 +288,19 @@ internal struct DISPLAYCONFIG_SOURCE_MODE
 internal enum DISPLAYCONFIG_DEVICE_INFO_TYPE : uint
 {
     GetSourceName = 1,
-    GetTargetName = 2
+    GetTargetName = 2,
+
+    /// <summary>Advanced color info (Win10 1709+). Conflates HDR and WCG/ACM.</summary>
+    GetAdvancedColorInfo = 9,
+
+    /// <summary>Legacy HDR toggle (Win10 1709+).</summary>
+    SetAdvancedColorState = 10,
+
+    /// <summary>HDR-specific advanced color info (Win11 24H2+).</summary>
+    GetAdvancedColorInfo2 = 15,
+
+    /// <summary>HDR-specific toggle (Win11 24H2+); preferred over SetAdvancedColorState.</summary>
+    SetHdrState = 16,
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -307,4 +333,58 @@ internal struct DISPLAYCONFIG_TARGET_DEVICE_NAME
     public string monitorFriendlyDeviceName;
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
     public string monitorDevicePath;
+}
+
+/// <summary>Advanced color state per target (Win10 1709+). The bitfield is
+/// flattened into <c>value</c>; use the named bit masks.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO
+{
+    public const uint AdvancedColorSupported = 0x1;
+    public const uint AdvancedColorEnabled = 0x2;
+    public const uint WideColorEnforced = 0x4;
+    public const uint AdvancedColorForceDisabled = 0x8;
+
+    public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+    public uint value;
+    public uint colorEncoding;
+    public uint bitsPerColorChannel;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE
+{
+    public const uint EnableAdvancedColor = 0x1;
+
+    public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+    public uint value;
+}
+
+/// <summary>HDR-specific advanced color state (Win11 24H2+). Distinguishes
+/// HDR from WCG/auto color management, unlike the legacy struct.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2
+{
+    public const uint AdvancedColorSupported = 0x01;
+    public const uint AdvancedColorActive = 0x02;
+    public const uint AdvancedColorLimitedByPolicy = 0x08;
+    public const uint HighDynamicRangeSupported = 0x10;
+    public const uint HighDynamicRangeUserEnabled = 0x20;
+    public const uint WideColorSupported = 0x40;
+    public const uint WideColorUserEnabled = 0x80;
+
+    public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+    public uint value;
+    public uint colorEncoding;
+    public uint bitsPerColorChannel;
+    public uint activeColorMode;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct DISPLAYCONFIG_SET_HDR_STATE
+{
+    public const uint EnableHdr = 0x1;
+
+    public DISPLAYCONFIG_DEVICE_INFO_HEADER header;
+    public uint value;
 }

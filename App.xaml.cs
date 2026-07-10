@@ -101,6 +101,7 @@ public partial class App : System.Windows.Application
         _processWatcher.Start();
 
         _settings.Changed += OnSettingsChanged;
+        _settings.SaveFailed += OnSettingsSaveFailed;
 
         // Re-read monitors when displays are added/removed/rearranged.
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
@@ -197,6 +198,15 @@ public partial class App : System.Windows.Application
         });
     }
 
+    private void OnSettingsSaveFailed(object? sender, string message)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            _panel?.ShowExternalStatus($"Settings were not saved: {message}", success: false);
+            _tray?.ShowBriefMessage("DisplayPilot could not save settings. Check the activity log.");
+        });
+    }
+
     private void ApplyHotkeys(bool announce)
     {
         var result = _hotkeys.Apply(_settings.Current);
@@ -210,6 +220,7 @@ public partial class App : System.Windows.Application
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
         AppLogger.Log("Display settings changed; refreshing.");
+        _processWatcher?.Reconfigure();
         Dispatcher.BeginInvoke(() =>
         {
             _panel?.RefreshMonitors();
@@ -446,6 +457,7 @@ public partial class App : System.Windows.Application
     {
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _settings.Changed -= OnSettingsChanged;
+        _settings.SaveFailed -= OnSettingsSaveFailed;
         _showPanelWait?.Unregister(null);
         _processWatcher?.Dispose();
         _hotkeys.UnregisterAll();

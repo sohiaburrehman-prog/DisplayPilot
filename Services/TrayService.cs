@@ -71,7 +71,15 @@ internal sealed class TrayService : IDisposable
             ContextMenuStrip = _menu,
             Visible = false,
         };
-        _notifyIcon.DoubleClick += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
+        // Single left-click opens the panel (like the Windows volume/network
+        // flyouts); double-click still works via the second click's MouseUp.
+        _notifyIcon.MouseUp += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                ShowPanelRequested?.Invoke(this, EventArgs.Empty);
+            }
+        };
     }
 
     public void Install()

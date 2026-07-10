@@ -5,7 +5,7 @@ using PrimaryDisplaySwap.Models;
 
 namespace PrimaryDisplaySwap.Services;
 
-/// <summary>Live state for the profile currently matched by the process watcher.</summary>
+/// <summary>Live state for the profile currently winning conflict resolution.</summary>
 public sealed class ActiveProfileState
 {
     public string ProfileId { get; init; } = string.Empty;
@@ -14,48 +14,43 @@ public sealed class ActiveProfileState
 }
 
 /// <summary>
-/// Watches running processes on a timer and applies auto-swap profiles: when a
-/// matched process starts, the configured monitor becomes primary; when it
-/// exits, the previous primary is optionally restored. Robust to monitors that
-/// are not currently connected (skipped and logged).
+/// Watches processes and maintains one conflict-safe auto-swap session. When
+/// several profiles match, a deterministic winner is selected. If that winner
+/// exits or is disabled, the next eligible profile is promoted; when the final
+/// winner exits, the original session primary is restored when requested.
 /// </summary>
 public sealed class ProcessWatcherService : IDisposable
 {
+    private static readonly TimeSpan ProcessStartRetention = TimeSpan.FromMinutes(10);
+
     private readonly SettingsService _settings;
     private readonly DisplayManager _displayManager;
     private readonly WindowRelocationService _windowRelocation;
     private readonly object _lock = new();
 
-    // Per-profile id: was the process running at the last poll?
-    private readonly Dictionary<string, bool> _runningState = new();
-
-    // Per-profile id: the primary device name captured when we activated it, so
-    // we can restore it on exit.
-    private readonly Dictionary<string, string> _previousPrimary = new();
-
-    private readonly Dictionary<string, LauncherChildTracker.WatchState> _launcherWatch = new();
-    private readonly Dictionary<string, bool> _launcherRunningState = new();
+    private readonly Dictionary<string, bool> _runningState = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _activationOrder = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LauncherChildTracker.WatchState> _launcherWatch = new(StringComparer.Ordinal);
+    private readonly List<LauncherChildTracker.ProcessStart> _recentProcessStarts = new();
 
     private System.Threading.Timer? _timer;
     private ManagementEventWatcher? _startWatcher;
     private bool _polling;
     private bool _disposed;
+    private volatile bool _forceReconcile;
+    private long _nextActivationOrder;
     private ActiveProfileState? _currentActiveProfile;
 
-    // Fallback timer cadence once WMI push-detection is active. WMI catches
-    // process starts within ~1 s, so the timer only needs to cover exits and
-    // act as a safety net if WMI is unavailable.
+    private string? _sessionBaselinePrimaryDevice;
+    private AppProfile? _winnerSnapshot;
+    private string? _winnerDetectedLauncherChild;
+
     private int PollIntervalMs => Math.Max(1000, _settings.Current.ProcessWatchIntervalMs);
 
     public event EventHandler? PrimaryChanged;
-
-    /// <summary>Raised when the matched active profile changes (including cleared).</summary>
     public event EventHandler? ActiveProfileChanged;
-
-    /// <summary>Brief user-facing status (tray/panel); throttled by subscribers.</summary>
     public event EventHandler<string>? StatusMessage;
 
-    /// <summary>Profile currently matched by the watcher, if any.</summary>
     public ActiveProfileState? CurrentActiveProfile
     {
         get
@@ -90,17 +85,10 @@ public sealed class ProcessWatcherService : IDisposable
             AppLogger.Log($"Process watcher started (timer interval {interval} ms).");
         }
 
-        // Push-based detection: WMI notifies us the moment any process starts,
-        // so a matched game triggers the swap in ~1 s instead of up to a full
-        // poll interval. Runs outside the lock (WMI setup can block briefly).
         StartProcessCreationWatcher();
+        ThreadPool.QueueUserWorkItem(_ => Poll());
     }
 
-    /// <summary>
-    /// Subscribes to WMI process-creation events. On any new process we kick an
-    /// immediate poll, which runs the normal matching logic right away. Best
-    /// effort: if WMI is unavailable the timer poll still covers detection.
-    /// </summary>
     private void StartProcessCreationWatcher()
     {
         lock (_lock)
@@ -113,8 +101,6 @@ public sealed class ProcessWatcherService : IDisposable
 
         try
         {
-            // WITHIN 1 = WMI coalesces creation events on a 1-second window,
-            // the lowest reliable value without elevation.
             var query = new WqlEventQuery(
                 "__InstanceCreationEvent",
                 TimeSpan.FromSeconds(1),
@@ -129,7 +115,7 @@ public sealed class ProcessWatcherService : IDisposable
                 _startWatcher = watcher;
             }
 
-            AppLogger.Log("Process-creation watcher active (WMI push detection).");
+            AppLogger.Log("Process-creation watcher active (WMI PID ancestry detection).");
         }
         catch (Exception ex)
         {
@@ -139,9 +125,30 @@ public sealed class ProcessWatcherService : IDisposable
 
     private void OnProcessCreationEvent(object sender, EventArrivedEventArgs e)
     {
-        // A new process appeared — run the matcher now rather than waiting for
-        // the next timer tick. The _polling guard coalesces bursts (a game
-        // launch spawns many processes) into non-overlapping polls.
+        try
+        {
+            if (e.NewEvent?["TargetInstance"] is ManagementBaseObject process)
+            {
+                var name = LauncherCatalog.Normalize(Convert.ToString(process["Name"]) ?? string.Empty);
+                var pid = Convert.ToUInt32(process["ProcessId"]);
+                var parentPid = Convert.ToUInt32(process["ParentProcessId"]);
+                if (pid != 0 && !string.IsNullOrWhiteSpace(name))
+                {
+                    lock (_lock)
+                    {
+                        _recentProcessStarts.RemoveAll(p => p.ProcessId == pid);
+                        _recentProcessStarts.Add(new LauncherChildTracker.ProcessStart(
+                            pid, parentPid, name, DateTime.UtcNow));
+                        TrimRecentProcessStarts_NoLock();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Could not read WMI process ancestry: {ex.Message}");
+        }
+
         Poll();
     }
 
@@ -181,9 +188,10 @@ public sealed class ProcessWatcherService : IDisposable
         }
     }
 
-    /// <summary>Re-reads the poll interval after a settings change.</summary>
+    /// <summary>Re-reads settings and reconciles active profiles immediately.</summary>
     public void Reconfigure()
     {
+        _forceReconcile = true;
         lock (_lock)
         {
             if (_timer is null || _disposed)
@@ -194,11 +202,12 @@ public sealed class ProcessWatcherService : IDisposable
             var interval = Math.Max(1000, _settings.Current.ProcessWatchIntervalMs);
             _timer.Change(interval, interval);
         }
+
+        ThreadPool.QueueUserWorkItem(_ => Poll());
     }
 
     private void Poll()
     {
-        // Skip if a previous poll is still running (display changes can block).
         lock (_lock)
         {
             if (_polling || _disposed)
@@ -211,77 +220,73 @@ public sealed class ProcessWatcherService : IDisposable
 
         try
         {
-            var profiles = _settings.Current.Profiles
+            var settings = _settings.Current;
+            var profiles = settings.Profiles
                 .Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.ProcessName))
+                .Select(p => p.Clone())
                 .ToList();
+            var currentProcesses = GetRunningProcesses();
+            var runningNames = currentProcesses
+                .Select(p => p.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            if (profiles.Count == 0)
+            IReadOnlyList<LauncherChildTracker.ProcessStart> recentStarts;
+            lock (_lock)
             {
-                _runningState.Clear();
-                _previousPrimary.Clear();
-                _launcherWatch.Clear();
-                _launcherRunningState.Clear();
-                SetCurrentActiveProfile(null);
-                return;
+                TrimRecentProcessStarts_NoLock();
+                recentStarts = _recentProcessStarts.ToList();
             }
 
-            var runningNames = GetRunningProcessNames();
-            var detectedChildren = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
+            var candidates = new List<ProfileConflictResolver.Candidate>();
             foreach (var profile in profiles)
             {
-                if (!LauncherChildTracker.IsLauncherProfile(profile))
+                string? detectedChild = null;
+                if (LauncherChildTracker.IsLauncherProfile(profile))
+                {
+                    if (!_launcherWatch.TryGetValue(profile.Id, out var watchState))
+                    {
+                        watchState = new LauncherChildTracker.WatchState();
+                        _launcherWatch[profile.Id] = watchState;
+                    }
+
+                    detectedChild = LauncherChildTracker.UpdateWatchState(
+                        profile, watchState, currentProcesses, recentStarts);
+                }
+                else
                 {
                     _launcherWatch.Remove(profile.Id);
-                    _launcherRunningState.Remove(profile.Id);
-                    continue;
                 }
 
-                var launcherRunning = runningNames.Contains(profile.NormalizedProcessName);
-                var launcherWasRunning = _launcherRunningState.TryGetValue(profile.Id, out var was) && was;
-                _launcherRunningState[profile.Id] = launcherRunning;
-
-                if (!_launcherWatch.TryGetValue(profile.Id, out var watchState))
-                {
-                    watchState = new LauncherChildTracker.WatchState();
-                    _launcherWatch[profile.Id] = watchState;
-                }
-
-                var child = LauncherChildTracker.UpdateWatchState(
-                    profile, watchState, runningNames, launcherWasRunning, launcherRunning);
-                if (!string.IsNullOrWhiteSpace(child))
-                {
-                    detectedChildren[profile.Id] = child;
-                }
-            }
-
-            foreach (var profile in profiles)
-            {
-                detectedChildren.TryGetValue(profile.Id, out var detectedChild);
                 var isRunning = ProfileMatcher.IsProfileActive(profile, runningNames, detectedChild);
-                var wasRunning = _runningState.TryGetValue(profile.Id, out var prev) && prev;
+                var wasRunning = _runningState.TryGetValue(profile.Id, out var previous) && previous;
                 _runningState[profile.Id] = isRunning;
 
                 if (isRunning && !wasRunning)
                 {
-                    OnProcessStarted(profile, detectedChild);
+                    _activationOrder[profile.Id] = ++_nextActivationOrder;
+                    AppLogger.Log($"Profile matched [{profile.DisplayLabel}] (priority {profile.Priority}).");
                 }
-                else if (!isRunning && wasRunning)
+
+                if (isRunning)
                 {
-                    OnProcessExited(profile);
+                    if (!_activationOrder.TryGetValue(profile.Id, out var order))
+                    {
+                        order = ++_nextActivationOrder;
+                        _activationOrder[profile.Id] = order;
+                    }
+
+                    candidates.Add(new ProfileConflictResolver.Candidate(profile, order, detectedChild));
                 }
             }
 
-            UpdateCurrentActiveProfile(profiles, runningNames, detectedChildren);
+            ReconcileWinner(candidates, settings.ProfileConflictRule);
 
-            // Forget state for profiles that no longer exist.
-            var liveIds = profiles.Select(p => p.Id).ToHashSet();
+            var liveIds = profiles.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
             foreach (var staleId in _runningState.Keys.Where(k => !liveIds.Contains(k)).ToList())
             {
                 _runningState.Remove(staleId);
-                _previousPrimary.Remove(staleId);
+                _activationOrder.Remove(staleId);
                 _launcherWatch.Remove(staleId);
-                _launcherRunningState.Remove(staleId);
             }
         }
         catch (Exception ex)
@@ -297,108 +302,135 @@ public sealed class ProcessWatcherService : IDisposable
         }
     }
 
-    private void OnProcessStarted(AppProfile profile, string? detectedLauncherChild)
+    private void ReconcileWinner(
+        IReadOnlyList<ProfileConflictResolver.Candidate> activeCandidates,
+        ProfileConflictRule rule)
     {
-        try
+        var ordered = ProfileConflictResolver.OrderCandidates(activeCandidates, rule).ToList();
+        var preferred = ordered.FirstOrDefault();
+
+        if (preferred is not null &&
+            !_forceReconcile &&
+            _winnerSnapshot is not null &&
+            preferred.Profile.Id == _winnerSnapshot.Id &&
+            string.Equals(
+                preferred.Profile.TargetMonitorDeviceName,
+                _winnerSnapshot.TargetMonitorDeviceName,
+                StringComparison.OrdinalIgnoreCase))
         {
-            var label = profile.DisplayLabel;
-            var monitors = _displayManager.GetMonitors();
-            var target = ProfileMatcher.ResolveTarget(profile, monitors);
-            if (target is null)
+            if (!string.Equals(
+                    preferred.DetectedLauncherChild,
+                    _winnerDetectedLauncherChild,
+                    StringComparison.OrdinalIgnoreCase))
             {
-                AppLogger.Log(
-                    $"Profile activate skipped [{label}]: target '{profile.TargetMonitorName}' " +
-                    $"(device {profile.TargetMonitorDeviceName}) not among {monitors.Count} connected display(s).");
-                return;
+                _winnerDetectedLauncherChild = preferred.DetectedLauncherChild;
+                _windowRelocation.BeginWatch(preferred.Profile, preferred.DetectedLauncherChild);
             }
 
-            if (target.IsPrimary)
+            return;
+        }
+
+        var monitors = _displayManager.GetMonitors();
+        _forceReconcile = false;
+        ProfileConflictResolver.Candidate? winner = null;
+        MonitorInfo? target = null;
+        foreach (var candidate in ordered)
+        {
+            target = ProfileMatcher.ResolveTarget(candidate.Profile, monitors);
+            if (target is not null)
             {
-                AppLogger.Log($"Profile skip [{label}]: '{target.Name}' ({target.DeviceName}) is already primary.");
-                return;
+                winner = candidate;
+                break;
             }
 
-            var currentPrimary = monitors.FirstOrDefault(m => m.IsPrimary);
-            if (currentPrimary is not null)
-            {
-                _previousPrimary[profile.Id] = currentPrimary.DeviceName;
-                AppLogger.Log(
-                    $"Profile activate [{label}]: process started; saving previous primary " +
-                    $"'{currentPrimary.Name}' ({currentPrimary.DeviceName}).");
-            }
-            else
-            {
-                AppLogger.Log($"Profile activate [{label}]: process started; no previous primary recorded.");
-            }
+            AppLogger.Log(
+                $"Profile conflict candidate skipped [{candidate.Profile.DisplayLabel}]: " +
+                $"target display is not connected.");
+        }
 
+        if (winner is null || target is null)
+        {
+            EndAutomationSession(monitors);
+            return;
+        }
+
+        if (_winnerSnapshot is null)
+        {
+            _sessionBaselinePrimaryDevice = monitors.FirstOrDefault(m => m.IsPrimary)?.DeviceName;
+            AppLogger.Log($"Auto-swap session baseline: {_sessionBaselinePrimaryDevice ?? "unknown"}.");
+        }
+
+        var previousWinner = _winnerSnapshot;
+        _winnerSnapshot = winner.Profile.Clone();
+        _winnerDetectedLauncherChild = winner.DetectedLauncherChild;
+
+        if (!target.IsPrimary)
+        {
             _displayManager.SetPrimaryByDeviceName(target.DeviceName);
             var displayName = MonitorDisplayHelper.GetDisplayName(target, _settings.Current);
-            RecordProfileTriggered(profile);
+            RecordProfileTriggered(winner.Profile);
             AppLogger.Log(
-                $"Profile activated [{label}]: primary set to '{displayName}' ({target.DeviceName}).");
-            StatusMessage?.Invoke(this, $"Auto-swap: {displayName} is now primary.");
+                $"Profile winner [{winner.Profile.DisplayLabel}, priority {winner.Profile.Priority}]: " +
+                $"primary set to '{displayName}' ({target.DeviceName}).");
+            StatusMessage?.Invoke(this,
+                previousWinner is null
+                    ? $"Auto-swap: {displayName} is now primary."
+                    : $"Auto-swap: {winner.Profile.DisplayLabel} won; {displayName} is now primary.");
             PrimaryChanged?.Invoke(this, EventArgs.Empty);
-
-            // The game may have already created its window on the old primary
-            // (games pick a display during engine init, often before the swap
-            // above lands). Watch for the game window and move it if needed.
-            _windowRelocation.BeginWatch(profile, detectedLauncherChild);
         }
-        catch (Exception ex)
+        else
         {
-            AppLogger.LogException($"ProcessWatcher start '{profile.DisplayLabel}'", ex);
+            AppLogger.Log(
+                $"Profile winner [{winner.Profile.DisplayLabel}]: '{target.Name}' is already primary.");
         }
+
+        _windowRelocation.BeginWatch(winner.Profile, winner.DetectedLauncherChild);
+        SetCurrentActiveProfile(new ActiveProfileState
+        {
+            ProfileId = winner.Profile.Id,
+            ProfileLabel = winner.Profile.DisplayLabel,
+            TargetMonitorLabel = MonitorDisplayHelper.GetDisplayName(target, _settings.Current),
+        });
     }
 
-    private void OnProcessExited(AppProfile profile)
+    private void EndAutomationSession(IReadOnlyList<MonitorInfo> monitors)
     {
-        try
+        if (_winnerSnapshot is null)
         {
-            var label = profile.DisplayLabel;
-            if (!profile.RestoreOnExit)
-            {
-                _previousPrimary.Remove(profile.Id);
-                AppLogger.Log($"Profile exit [{label}]: restore-on-exit disabled; leaving primary unchanged.");
-                return;
-            }
+            SetCurrentActiveProfile(null);
+            return;
+        }
 
-            if (!_previousPrimary.TryGetValue(profile.Id, out var previousDevice) ||
-                string.IsNullOrWhiteSpace(previousDevice))
-            {
-                AppLogger.Log($"Profile exit [{label}]: no saved previous primary to restore.");
-                return;
-            }
+        var departedWinner = _winnerSnapshot;
+        var baselineDevice = _sessionBaselinePrimaryDevice;
 
-            _previousPrimary.Remove(profile.Id);
+        _winnerSnapshot = null;
+        _winnerDetectedLauncherChild = null;
+        _sessionBaselinePrimaryDevice = null;
+        SetCurrentActiveProfile(null);
 
-            var monitors = _displayManager.GetMonitors();
-            var previous = monitors.FirstOrDefault(m =>
-                string.Equals(m.DeviceName, previousDevice, StringComparison.OrdinalIgnoreCase));
-
-            if (previous is null)
-            {
-                AppLogger.Log(
-                    $"Profile restore skipped [{label}]: previous primary device '{previousDevice}' " +
-                    $"not among {monitors.Count} connected display(s).");
-                return;
-            }
-
-            if (previous.IsPrimary)
-            {
-                AppLogger.Log($"Profile restore skip [{label}]: '{previous.Name}' is already primary.");
-                return;
-            }
-
-            _displayManager.SetPrimaryByDeviceName(previous.DeviceName);
-            var displayName = MonitorDisplayHelper.GetDisplayName(previous, _settings.Current);
+        if (!departedWinner.RestoreOnExit || string.IsNullOrWhiteSpace(baselineDevice))
+        {
             AppLogger.Log(
-                $"Profile restored [{label}]: primary returned to '{displayName}' ({previous.DeviceName}).");
+                $"Auto-swap session ended [{departedWinner.DisplayLabel}]; restore disabled or no baseline saved.");
+            return;
+        }
+
+        var baseline = monitors.FirstOrDefault(m =>
+            string.Equals(m.DeviceName, baselineDevice, StringComparison.OrdinalIgnoreCase));
+        if (baseline is null)
+        {
+            AppLogger.Log($"Auto-swap restore skipped: baseline display '{baselineDevice}' is disconnected.");
+            return;
+        }
+
+        if (!baseline.IsPrimary)
+        {
+            _displayManager.SetPrimaryByDeviceName(baseline.DeviceName);
+            var displayName = MonitorDisplayHelper.GetDisplayName(baseline, _settings.Current);
+            AppLogger.Log($"Auto-swap session ended; restored baseline primary '{displayName}'.");
             StatusMessage?.Invoke(this, $"Auto-swap: restored {displayName} as primary.");
             PrimaryChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            AppLogger.LogException($"ProcessWatcher exit '{profile.DisplayLabel}'", ex);
         }
     }
 
@@ -413,51 +445,6 @@ public sealed class ProcessWatcherService : IDisposable
             {
                 live.LastTriggeredUtc = now;
             }
-        });
-    }
-
-    private void UpdateCurrentActiveProfile(
-        IReadOnlyList<AppProfile> profiles,
-        HashSet<string> runningNames,
-        Dictionary<string, string> detectedChildren)
-    {
-        AppProfile? active = null;
-        foreach (var profile in profiles)
-        {
-            detectedChildren.TryGetValue(profile.Id, out var detectedChild);
-            if (ProfileMatcher.IsProfileActive(profile, runningNames, detectedChild))
-            {
-                active = profile;
-                break;
-            }
-        }
-
-        if (active is null)
-        {
-            SetCurrentActiveProfile(null);
-            return;
-        }
-
-        // Cache hit: if the same profile is still active, avoid the expensive Win32
-        // GetMonitors() call (which queries DisplayConfig and causes micro-stutters
-        // if called repeatedly on a timer).
-        var current = CurrentActiveProfile;
-        if (current is not null && current.ProfileId == active.Id)
-        {
-            return;
-        }
-
-        var monitors = _displayManager.GetMonitors();
-        var target = ProfileMatcher.ResolveTarget(active, monitors);
-        var monitorLabel = target is not null
-            ? MonitorDisplayHelper.GetDisplayName(target, _settings.Current)
-            : active.TargetMonitorName;
-
-        SetCurrentActiveProfile(new ActiveProfileState
-        {
-            ProfileId = active.Id,
-            ProfileLabel = active.DisplayLabel,
-            TargetMonitorLabel = monitorLabel,
         });
     }
 
@@ -478,16 +465,23 @@ public sealed class ProcessWatcherService : IDisposable
         ActiveProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public static HashSet<string> GetRunningProcessNames()
+    private void TrimRecentProcessStarts_NoLock()
+    {
+        var cutoff = DateTime.UtcNow - ProcessStartRetention;
+        _recentProcessStarts.RemoveAll(p => p.SeenUtc < cutoff);
+    }
+
+    public static IReadOnlyList<LauncherChildTracker.RunningProcess> GetRunningProcesses()
     {
         var processes = Process.GetProcesses();
-        var names = new HashSet<string>(processes.Length, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < processes.Length; i++)
+        var results = new List<LauncherChildTracker.RunningProcess>(processes.Length);
+        foreach (var process in processes)
         {
-            var process = processes[i];
             try
             {
-                names.Add(process.ProcessName);
+                results.Add(new LauncherChildTracker.RunningProcess(
+                    (uint)process.Id,
+                    LauncherCatalog.Normalize(process.ProcessName)));
             }
             catch
             {
@@ -499,8 +493,13 @@ public sealed class ProcessWatcherService : IDisposable
             }
         }
 
-        return names;
+        return results;
     }
+
+    public static HashSet<string> GetRunningProcessNames() =>
+        GetRunningProcesses()
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     public void Dispose()
     {

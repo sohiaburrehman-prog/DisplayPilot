@@ -20,8 +20,8 @@ A lightweight Windows system-tray utility that changes which monitor is the **pr
 - **Tray quick actions** — swap (dual monitor), cycle primary, apply any enabled profile from the tray.
 - **Custom global hotkeys** — rebind the open-panel shortcut (default `Ctrl+Shift+M`) and add an optional "cycle primary" hotkey. Captured in-app, persisted, conflict-checked.
 - **Resolution & refresh switching** — pick any reported resolution/refresh per monitor from the panel; changes are validated before they're applied.
-- **Per-app / per-game auto-swap profiles** — when a chosen process starts, a chosen monitor becomes primary; launcher profiles watch for the game exe spawned after Steam/Epic/etc.; optionally restore the previous primary on exit.
-- **Headless CLI** — list monitors, set primary, export/import settings from scripts (`DisplayPilot.exe --help`).
+- **Per-app / per-game auto-swap profiles** — when a chosen process starts, a chosen monitor becomes primary; priorities and a selectable conflict rule decide which profile wins when apps overlap, and the previous winner is restored as the stack unwinds.
+- **Headless CLI** — list monitors/profiles/presets, apply profiles or layouts, set primary/HDR/projection, and export/import settings. Add `--json` for stable scripting output (`DisplayPilot.exe --help`).
 - **What's new** — dismissible release-notes banner after upgrades; optional GitHub update check.
 - **Activity log viewer** — view, copy, or open the log folder in-app. Unhandled exceptions are recorded for diagnosis.
 - **Telemetry-free update check** — optional startup check against the GitHub releases API (no downloads, no analytics) with a dismissible banner.
@@ -73,8 +73,12 @@ Headless mode (no tray/GUI):
 ```powershell
 DisplayPilot.exe --help
 DisplayPilot.exe --list-monitors
+DisplayPilot.exe --list-profiles --json
 DisplayPilot.exe --set-primary 1
 DisplayPilot.exe --set-primary \\.\DISPLAY2
+DisplayPilot.exe --set-projection extend
+DisplayPilot.exe --apply-profile <name-or-id> --json
+DisplayPilot.exe --apply-preset <name-or-id> --json
 DisplayPilot.exe --export-settings backup.json
 DisplayPilot.exe --import-settings backup.json
 ```

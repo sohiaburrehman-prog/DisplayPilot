@@ -285,6 +285,36 @@ public sealed class DisplayManager
     }
 
     /// <summary>
+    /// Validates a resolution + refresh-rate change without applying it.
+    /// </summary>
+    public void TestDisplayMode(string deviceName, DisplayMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(mode);
+
+        var devMode = CreateDevMode();
+        if (!EnumDisplaySettings(deviceName, EnumCurrentSettings, ref devMode))
+        {
+            throw new InvalidOperationException($"Could not read current settings for {deviceName}.");
+        }
+
+        devMode.dmPelsWidth = (uint)mode.Width;
+        devMode.dmPelsHeight = (uint)mode.Height;
+        devMode.dmFields = DmPelsWidth | DmPelsHeight;
+        if (mode.RefreshRateHz > 0)
+        {
+            devMode.dmDisplayFrequency = (uint)mode.RefreshRateHz;
+            devMode.dmFields |= DmDisplayFrequency;
+        }
+
+        var test = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CdsTest, IntPtr.Zero);
+        if (test != DispChangeSuccessful)
+        {
+            throw new InvalidOperationException(
+                $"{mode.Label} is not supported on this display — {DescribeDispChange(test)}.");
+        }
+    }
+
+    /// <summary>
     /// Applies a resolution + refresh-rate change to one monitor. Validates with
     /// CDS_TEST first, then commits with CDS_UPDATEREGISTRY. Throws with a
     /// descriptive message on failure (leaving the current mode untouched).
@@ -292,6 +322,8 @@ public sealed class DisplayManager
     public void ApplyDisplayMode(string deviceName, DisplayMode mode)
     {
         ArgumentNullException.ThrowIfNull(mode);
+
+        TestDisplayMode(deviceName, mode);
 
         var devMode = CreateDevMode();
         if (!EnumDisplaySettings(deviceName, EnumCurrentSettings, ref devMode))
@@ -307,13 +339,6 @@ public sealed class DisplayManager
         {
             devMode.dmDisplayFrequency = (uint)mode.RefreshRateHz;
             devMode.dmFields |= DmDisplayFrequency;
-        }
-
-        var test = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CdsTest, IntPtr.Zero);
-        if (test != DispChangeSuccessful)
-        {
-            throw new InvalidOperationException(
-                $"{mode.Label} is not supported on this display — {DescribeDispChange(test)}.");
         }
 
         var apply = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CdsUpdateRegistry, IntPtr.Zero);
@@ -570,5 +595,175 @@ public sealed class DisplayManager
         }
 
         return (friendlyNames, bounds);
+    }
+
+    // ---- HDR / advanced color ----
+
+    /// <summary>Per-monitor HDR capability and current state.</summary>
+    public sealed record HdrStatus(bool Supported, bool Enabled);
+
+    /// <summary>
+    /// Queries HDR support/state for a monitor by GDI device name. Prefers the
+    /// Win11 24H2 API (which separates HDR from WCG/auto color management) and
+    /// falls back to the Win10 1709 advanced-color API. Returns null when the
+    /// monitor cannot be resolved or the OS lacks both APIs.
+    /// </summary>
+    public HdrStatus? GetHdrStatus(string deviceName)
+    {
+        if (!TryFindTarget(deviceName, out var adapterId, out var targetId))
+        {
+            return null;
+        }
+
+        var info2 = new DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2
+        {
+            header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+            {
+                type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GetAdvancedColorInfo2,
+                size = (uint)Marshal.SizeOf<DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2>(),
+                adapterId = adapterId,
+                id = targetId,
+            },
+        };
+
+        if (DisplayConfigGetDeviceInfo(ref info2) == ErrorSuccess)
+        {
+            return new HdrStatus(
+                Supported: (info2.value & DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2.HighDynamicRangeSupported) != 0,
+                Enabled: (info2.value & DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2.HighDynamicRangeUserEnabled) != 0);
+        }
+
+        var info = new DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO
+        {
+            header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+            {
+                type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GetAdvancedColorInfo,
+                size = (uint)Marshal.SizeOf<DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO>(),
+                adapterId = adapterId,
+                id = targetId,
+            },
+        };
+
+        if (DisplayConfigGetDeviceInfo(ref info) == ErrorSuccess)
+        {
+            var forceDisabled = (info.value & DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO.AdvancedColorForceDisabled) != 0;
+            return new HdrStatus(
+                Supported: (info.value & DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO.AdvancedColorSupported) != 0 && !forceDisabled,
+                Enabled: (info.value & DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO.AdvancedColorEnabled) != 0);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Enables or disables HDR for a monitor by GDI device name. Tries the
+    /// Win11 24H2 SET_HDR_STATE first, then the legacy advanced-color toggle.
+    /// Throws on failure so callers can surface the error.
+    /// </summary>
+    public void SetHdrEnabled(string deviceName, bool enable)
+    {
+        if (!TryFindTarget(deviceName, out var adapterId, out var targetId))
+        {
+            throw new InvalidOperationException($"Monitor '{deviceName}' not found in the active display configuration.");
+        }
+
+        var hdrState = new DISPLAYCONFIG_SET_HDR_STATE
+        {
+            header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+            {
+                type = DISPLAYCONFIG_DEVICE_INFO_TYPE.SetHdrState,
+                size = (uint)Marshal.SizeOf<DISPLAYCONFIG_SET_HDR_STATE>(),
+                adapterId = adapterId,
+                id = targetId,
+            },
+            value = enable ? DISPLAYCONFIG_SET_HDR_STATE.EnableHdr : 0u,
+        };
+
+        var result = DisplayConfigSetDeviceInfo(ref hdrState);
+        if (result == ErrorSuccess)
+        {
+            AppLogger.Log($"HDR {(enable ? "enabled" : "disabled")} on {deviceName} (SET_HDR_STATE).");
+            return;
+        }
+
+        // Pre-24H2: fall back to the legacy advanced-color toggle.
+        var legacyState = new DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE
+        {
+            header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+            {
+                type = DISPLAYCONFIG_DEVICE_INFO_TYPE.SetAdvancedColorState,
+                size = (uint)Marshal.SizeOf<DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE>(),
+                adapterId = adapterId,
+                id = targetId,
+            },
+            value = enable ? DISPLAYCONFIG_SET_ADVANCED_COLOR_STATE.EnableAdvancedColor : 0u,
+        };
+
+        var legacyResult = DisplayConfigSetDeviceInfo(ref legacyState);
+        if (legacyResult == ErrorSuccess)
+        {
+            AppLogger.Log($"HDR {(enable ? "enabled" : "disabled")} on {deviceName} (SET_ADVANCED_COLOR_STATE fallback).");
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Could not change HDR on '{deviceName}': SET_HDR_STATE error {result}, " +
+            $"SET_ADVANCED_COLOR_STATE error {legacyResult}.");
+    }
+
+    /// <summary>
+    /// Resolves a GDI device name (\\.\DISPLAYn) to the DisplayConfig target
+    /// (adapter LUID + target id) needed for device-info calls.
+    /// </summary>
+    private static bool TryFindTarget(string deviceName, out LUID adapterId, out uint targetId)
+    {
+        adapterId = default;
+        targetId = 0;
+
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            return false;
+        }
+
+        try
+        {
+            var (paths, _) = QueryActiveConfig();
+            foreach (var path in paths)
+            {
+                if ((path.flags & DisplayconfigPathActive) == 0)
+                {
+                    continue;
+                }
+
+                var sourceRequest = new DISPLAYCONFIG_SOURCE_DEVICE_NAME
+                {
+                    header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                    {
+                        type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GetSourceName,
+                        size = (uint)Marshal.SizeOf<DISPLAYCONFIG_SOURCE_DEVICE_NAME>(),
+                        adapterId = path.sourceInfo.adapterId,
+                        id = path.sourceInfo.id,
+                    },
+                };
+
+                if (DisplayConfigGetDeviceInfo(ref sourceRequest) != ErrorSuccess)
+                {
+                    continue;
+                }
+
+                if (string.Equals(sourceRequest.viewGdiDeviceName, deviceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    adapterId = path.targetInfo.adapterId;
+                    targetId = path.targetInfo.id;
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"HDR target lookup failed for {deviceName}: {ex.Message}");
+        }
+
+        return false;
     }
 }

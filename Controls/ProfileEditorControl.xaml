@@ -70,6 +70,23 @@
                   DisplayMemberPath="Label"
                   Margin="0,0,0,12" />
 
+        <Grid Margin="0,0,0,4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="90" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Conflict priority"
+                       VerticalAlignment="Center"
+                       FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+            <TextBox x:Name="PriorityBox" Grid.Column="1"
+                     Style="{StaticResource DarkTextBox}"
+                     Text="0" />
+        </Grid>
+        <TextBlock Text="Higher values win when multiple profiles match. Range: -1000 to 1000."
+                   FontSize="10.5" TextWrapping="Wrap"
+                   Foreground="{StaticResource TextMutedBrush}"
+                   Margin="0,0,0,12" />
+
         <CheckBox x:Name="RestoreOnExitCheck"
                   Style="{StaticResource DarkCheckBox}"
                   Content="Restore previous primary when the app exits"

@@ -3,24 +3,29 @@ using PrimaryDisplaySwap.Models;
 namespace PrimaryDisplaySwap.Services;
 
 /// <summary>
-/// Tracks processes that appear after a game-store launcher starts, so
-/// auto-swap profiles can match the actual game exe instead of the launcher.
+/// Tracks launcher descendants by PID ancestry. This deliberately avoids the
+/// old "first new process on the machine" heuristic, which could select an
+/// unrelated updater or app started at the same time as a game.
 /// </summary>
 public static class LauncherChildTracker
 {
+    public sealed record RunningProcess(uint ProcessId, string Name);
+
+    public sealed record ProcessStart(
+        uint ProcessId,
+        uint ParentProcessId,
+        string Name,
+        DateTime SeenUtc);
+
     public sealed class WatchState
     {
-        public HashSet<string> BaselineProcessNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-        public DateTime LauncherSeenUtc { get; set; }
+        public HashSet<uint> KnownLauncherProcessIds { get; } = new();
         public string? DetectedChild { get; set; }
-        public bool WaitingLogged { get; set; }
 
         public void Reset()
         {
-            BaselineProcessNames.Clear();
-            LauncherSeenUtc = DateTime.MinValue;
+            KnownLauncherProcessIds.Clear();
             DetectedChild = null;
-            WaitingLogged = false;
         }
     }
 
@@ -28,89 +33,112 @@ public static class LauncherChildTracker
         profile is not null && LauncherCatalog.IsKnownLauncher(profile.ProcessName);
 
     /// <summary>
-    /// Updates watch state for a launcher profile and returns the detected child
-    /// process name (without .exe) when one is identified.
+    /// Returns the configured target when it is running, otherwise identifies
+    /// a currently-running descendant of the configured launcher from WMI
+    /// process-start ancestry. A detected child remains active after a launcher
+    /// exits and is cleared only when that child exits.
     /// </summary>
     public static string? UpdateWatchState(
         AppProfile profile,
         WatchState state,
-        ISet<string> currentRunning,
-        bool launcherWasRunning,
-        bool launcherIsRunning)
+        IReadOnlyList<RunningProcess> currentProcesses,
+        IReadOnlyList<ProcessStart> recentStarts)
     {
-        if (!launcherIsRunning)
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(state);
+
+        var runningNames = currentProcesses
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (profile.HasResolvedTarget && runningNames.Contains(profile.NormalizedResolvedTarget))
+        {
+            state.DetectedChild = profile.NormalizedResolvedTarget;
+            return state.DetectedChild;
+        }
+
+        var previouslyDetectedChild = state.DetectedChild;
+        if (!string.IsNullOrWhiteSpace(previouslyDetectedChild) && runningNames.Contains(previouslyDetectedChild))
+        {
+            return previouslyDetectedChild;
+        }
+
+        state.DetectedChild = null;
+
+        var launcherPids = currentProcesses
+            .Where(p => string.Equals(p.Name, profile.NormalizedProcessName, StringComparison.OrdinalIgnoreCase))
+            .Select(p => p.ProcessId)
+            .ToHashSet();
+        state.KnownLauncherProcessIds.UnionWith(launcherPids);
+
+        // A previously tracked game has exited and its launcher is already
+        // gone. Clear stale launcher PIDs before Windows can reuse them.
+        if (!string.IsNullOrWhiteSpace(previouslyDetectedChild) && launcherPids.Count == 0)
         {
             state.Reset();
             return null;
         }
 
-        if (!launcherWasRunning)
+        if (!profile.MatchLauncherChildren || state.KnownLauncherProcessIds.Count == 0)
         {
-            state.BaselineProcessNames = new HashSet<string>(currentRunning, StringComparer.OrdinalIgnoreCase);
-            state.LauncherSeenUtc = DateTime.UtcNow;
-            state.DetectedChild = null;
-            state.WaitingLogged = false;
-
-            var waitTarget = profile.HasResolvedTarget
-                ? profile.NormalizedResolvedTarget
-                : "game process";
-            AppLogger.Log(
-                $"Launcher {profile.NormalizedProcessName} detected, waiting for {waitTarget} " +
-                $"(profile [{profile.DisplayLabel}]).");
-        }
-
-        if (profile.HasResolvedTarget &&
-            currentRunning.Contains(profile.NormalizedResolvedTarget))
-        {
-            if (!string.Equals(state.DetectedChild, profile.NormalizedResolvedTarget, StringComparison.OrdinalIgnoreCase))
+            if (launcherPids.Count == 0)
             {
-                AppLogger.Log(
-                    $"Child process matched: {profile.NormalizedResolvedTarget} " +
-                    $"(profile [{profile.DisplayLabel}]).");
+                state.Reset();
             }
 
-            state.DetectedChild = profile.NormalizedResolvedTarget;
-            return profile.NormalizedResolvedTarget;
-        }
-
-        var newProcesses = currentRunning
-            .Where(n => !state.BaselineProcessNames.Contains(n))
-            .Where(n => !ProcessPickerHelper.IsExcludedProcess(n))
-            .ToList();
-
-        if (profile.HasResolvedTarget)
-        {
-            var match = newProcesses.FirstOrDefault(n =>
-                string.Equals(n, profile.NormalizedResolvedTarget, StringComparison.OrdinalIgnoreCase));
-            if (match is not null)
-            {
-                AppLogger.Log($"Child process matched: {match} (profile [{profile.DisplayLabel}]).");
-                state.DetectedChild = match;
-                return match;
-            }
-
-            return state.DetectedChild;
-        }
-
-        if (!profile.MatchLauncherChildren)
-        {
             return null;
         }
 
-        if (state.DetectedChild is not null &&
-            currentRunning.Contains(state.DetectedChild))
-        {
-            return state.DetectedChild;
-        }
+        var runningPids = currentProcesses.Select(p => p.ProcessId).ToHashSet();
+        var startsByPid = recentStarts.ToDictionary(p => p.ProcessId, p => p);
 
-        var child = newProcesses.FirstOrDefault();
+        var child = recentStarts
+            .Where(p => runningPids.Contains(p.ProcessId))
+            .Where(p => !ProcessPickerHelper.IsExcludedProcess(p.Name))
+            .Where(p => IsDescendantOfLauncher(p, state.KnownLauncherProcessIds, startsByPid))
+            .OrderBy(p => p.SeenUtc)
+            .FirstOrDefault();
+
         if (child is not null)
         {
-            AppLogger.Log($"Child process matched: {child} (profile [{profile.DisplayLabel}]).");
-            state.DetectedChild = child;
-            return child;
+            state.DetectedChild = child.Name;
+            AppLogger.Log(
+                $"Launcher descendant matched by PID ancestry: {child.Name} " +
+                $"(profile [{profile.DisplayLabel}], pid {child.ProcessId}, parent {child.ParentProcessId}).");
+            return child.Name;
+        }
+
+        if (launcherPids.Count == 0)
+        {
+            state.Reset();
         }
 
         return null;
+    }
+
+    private static bool IsDescendantOfLauncher(
+        ProcessStart process,
+        ISet<uint> launcherPids,
+        IReadOnlyDictionary<uint, ProcessStart> startsByPid)
+    {
+        var parentPid = process.ParentProcessId;
+        var visited = new HashSet<uint>();
+
+        while (parentPid != 0 && visited.Add(parentPid))
+        {
+            if (launcherPids.Contains(parentPid))
+            {
+                return true;
+            }
+
+            if (!startsByPid.TryGetValue(parentPid, out var parent))
+            {
+                return false;
+            }
+
+            parentPid = parent.ParentProcessId;
+        }
+
+        return false;
     }
 }

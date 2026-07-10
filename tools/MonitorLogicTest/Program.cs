@@ -278,7 +278,54 @@ Check(!ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningNone, "g
 Check(ProfileMatcher.IsProfileActive(launcherMatchChildProfile, runningLauncher, "game"), "Launcher matches itself even if child is not running");
 
 Check(ProcessPickerHelper.IsExcludedProcess("steam"), "Launcher processes excluded from child suggestions");
+Check(ProcessPickerHelper.IsExcludedProcess("steamwebhelper"), "Launcher helper processes excluded from child detection");
 Check(!ProcessPickerHelper.IsExcludedProcess("eldenring"), "Game processes not excluded from child suggestions");
+
+Console.WriteLine("\n== Launcher PID ancestry tracking ==");
+var ancestryState = new LauncherChildTracker.WatchState();
+var ancestryProfile = new AppProfile { ProcessName = "steam.exe", MatchLauncherChildren = true };
+var ancestryProcesses = new List<LauncherChildTracker.RunningProcess>
+{
+    new(100, "steam"),
+    new(200, "realgame"),
+    new(300, "unrelated"),
+};
+var ancestryStarts = new List<LauncherChildTracker.ProcessStart>
+{
+    new(300, 999, "unrelated", DateTime.UtcNow.AddSeconds(-2)),
+    new(200, 100, "realgame", DateTime.UtcNow.AddSeconds(-1)),
+};
+Check(LauncherChildTracker.UpdateWatchState(ancestryProfile, ancestryState, ancestryProcesses, ancestryStarts) == "realgame",
+    "Launcher tracker selects an actual launcher descendant, not the first unrelated process");
+Check(LauncherChildTracker.UpdateWatchState(
+        ancestryProfile,
+        ancestryState,
+        new List<LauncherChildTracker.RunningProcess> { new(200, "realgame") },
+        ancestryStarts) == "realgame",
+    "Detected game remains active after launcher exits");
+Check(LauncherChildTracker.UpdateWatchState(
+        ancestryProfile,
+        ancestryState,
+        new List<LauncherChildTracker.RunningProcess> { new(300, "unrelated") },
+        ancestryStarts) is null,
+    "Launcher tracker clears the child after the game exits");
+
+Console.WriteLine("\n== Profile conflict resolution ==");
+var lowPriority = gameProfile.Clone();
+lowPriority.Id = "low";
+lowPriority.Priority = 1;
+var highPriority = gameProfile.Clone();
+highPriority.Id = "high";
+highPriority.Priority = 10;
+var conflictCandidates = new[]
+{
+    new ProfileConflictResolver.Candidate(highPriority, ActivationOrder: 1),
+    new ProfileConflictResolver.Candidate(lowPriority, ActivationOrder: 2),
+};
+Check(ProfileConflictResolver.SelectWinner(conflictCandidates, ProfileConflictRule.HighestPriority)?.Profile.Id == "high",
+    "Highest-priority conflict rule chooses priority before activation time");
+Check(ProfileConflictResolver.SelectWinner(conflictCandidates, ProfileConflictRule.MostRecentlyActivated)?.Profile.Id == "low",
+    "Most-recent conflict rule chooses activation time before priority");
 
 // ─────────────────── Monitor nicknames ───────────────────
 Console.WriteLine("\n== Monitor nickname persistence ==");
@@ -409,6 +456,8 @@ Console.WriteLine("\n== Settings JSON serialization round-trip ==");
 
 settings.Profiles.Add(gameProfile);
 settings.Profiles.Add(launcherProfile);
+settings.Profiles[0].Priority = 25;
+settings.ProfileConflictRule = ProfileConflictRule.MostRecentlyActivated;
 settings.AutoUpdateCheckEnabled = false;
 settings.FirstRunCompleted = true;
 settings.MonitorNicknames[@"\\.\DISPLAY1"] = "Desk";
@@ -429,22 +478,25 @@ Check(restored.OpenPanelHotkey.Key == settings.OpenPanelHotkey.Key &&
 Check(restored.CyclePrimaryHotkey.Enabled && restored.CyclePrimaryHotkey.Key == 0x43,
     "Cycle hotkey survives JSON round-trip");
 Check(restored.AutoUpdateCheckEnabled == false, "Auto-update flag survives JSON round-trip");
+Check(restored.Profiles[0].Priority == 25, "Profile priority survives JSON round-trip");
+Check(restored.ProfileConflictRule == ProfileConflictRule.MostRecentlyActivated,
+    "Profile conflict rule survives JSON round-trip");
 
-// ─────────────────── Schema v4: layout presets & last-used profile ───────────────────
-Console.WriteLine("\n== Schema v4: layout presets & last-used profile ==");
-Check(AppSettings.CurrentSchemaVersion == 4, "Current schema version is 4");
+// ─────────────────── Schema v5: priority/conflicts, layouts & last-used profile ───────────────────
+Console.WriteLine("\n== Schema v5: priorities, layout presets & last-used profile ==");
+Check(AppSettings.CurrentSchemaVersion == 5, "Current schema version is 5");
 
 var v4Settings = new AppSettings { SchemaVersion = 3 };
 v4Settings.Profiles.Add(gameProfile.Clone());
 SettingsService.TryParseImport(JsonSerializer.Serialize(v4Settings), out var migrated, out _);
-Check(migrated?.SchemaVersion == 4, "Import normalizes schema to v4");
+Check(migrated?.SchemaVersion == 5, "Import normalizes schema to v5");
 Check(migrated?.LayoutPresets is not null && migrated.LayoutPresets.Count == 0, "LayoutPresets initialized on migrate");
 
 var preset = LayoutPresetService.CaptureCurrent("Desk", manager);
 Check(!string.IsNullOrWhiteSpace(preset.PrimaryMonitorDeviceName), "Layout preset captures primary device");
 Check(preset.MonitorModes.Count >= count, "Layout preset captures mode per connected monitor");
 
-v4Settings.SchemaVersion = 4;
+v4Settings.SchemaVersion = 5;
 v4Settings.LayoutPresets.Add(preset);
 v4Settings.LastUsedProfileId = gameProfile.Id;
 v4Settings.Profiles[0].LastTriggeredUtc = DateTime.UtcNow;

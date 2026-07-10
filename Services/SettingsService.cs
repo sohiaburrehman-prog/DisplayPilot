@@ -30,6 +30,9 @@ public sealed class SettingsService
     /// <summary>Raised after settings change and are persisted.</summary>
     public event EventHandler? Changed;
 
+    /// <summary>Raised when a requested settings write could not be persisted.</summary>
+    public event EventHandler<string>? SaveFailed;
+
     public void Load()
     {
         lock (_lock)
@@ -39,7 +42,7 @@ public sealed class SettingsService
                 if (!File.Exists(SettingsPath))
                 {
                     Current = new AppSettings();
-                    Save_NoLock();
+                    Save_NoLock(Current);
                     return;
                 }
 
@@ -59,44 +62,69 @@ public sealed class SettingsService
     }
 
     /// <summary>Applies a mutation to the live settings and persists the result.</summary>
-    public void Update(Action<AppSettings> mutate)
+    public bool Update(Action<AppSettings> mutate)
     {
         if (mutate is null)
         {
-            return;
+            return false;
         }
 
+        string? saveError;
         lock (_lock)
         {
-            mutate(Current);
-            Save_NoLock();
+            var candidate = Current.Clone();
+            mutate(candidate);
+            if (!Save_NoLock(candidate, out saveError))
+            {
+                goto Failed;
+            }
+
+            Current = candidate;
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+
+    Failed:
+        SaveFailed?.Invoke(this, saveError ?? "Settings could not be saved.");
+        return false;
     }
 
     /// <summary>Persists the current settings without raising <see cref="Changed"/>.</summary>
-    public void Save()
+    public bool Save()
     {
+        string? saveError;
         lock (_lock)
         {
-            Save_NoLock();
+            if (Save_NoLock(Current, out saveError))
+            {
+                return true;
+            }
         }
+
+        SaveFailed?.Invoke(this, saveError ?? "Settings could not be saved.");
+        return false;
     }
 
-    private void Save_NoLock()
+    private static bool Save_NoLock(AppSettings snapshot) => Save_NoLock(snapshot, out _);
+
+    private static bool Save_NoLock(AppSettings snapshot, out string? error)
     {
+        error = null;
         try
         {
             Directory.CreateDirectory(SettingsDirectory);
-            var json = JsonSerializer.Serialize(Current, JsonOptions);
+            var json = JsonSerializer.Serialize(snapshot, JsonOptions);
             var tempPath = SettingsPath + ".tmp";
             File.WriteAllText(tempPath, json);
             File.Move(tempPath, SettingsPath, overwrite: true);
+            return true;
         }
         catch (Exception ex)
         {
+            error = ex.Message;
             AppLogger.Log($"Settings save failed: {ex.Message}");
+            return false;
         }
     }
 
@@ -114,7 +142,7 @@ public sealed class SettingsService
 
         if (upgraded || restored)
         {
-            Save_NoLock();
+            Save_NoLock(Current);
             if (upgraded)
             {
                 AppLogger.Log($"Settings migrated to schema v{AppSettings.CurrentSchemaVersion}.");
@@ -135,25 +163,38 @@ public sealed class SettingsService
         settings.MonitorNicknames ??= new Dictionary<string, string>();
         settings.LastUsedProfileId ??= string.Empty;
 
+        if (!Enum.IsDefined(settings.ProfileConflictRule))
+        {
+            settings.ProfileConflictRule = ProfileConflictRule.HighestPriority;
+        }
+
+        var profileIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var profile in settings.Profiles)
         {
-            if (string.IsNullOrWhiteSpace(profile.Id))
+            if (string.IsNullOrWhiteSpace(profile.Id) || !profileIds.Add(profile.Id))
             {
                 profile.Id = Guid.NewGuid().ToString("N");
+                profileIds.Add(profile.Id);
             }
 
             profile.ResolvedTargetProcessName ??= string.Empty;
             profile.MatchLauncherChildren = profile.MatchLauncherChildren || LauncherCatalog.IsKnownLauncher(profile.ProcessName);
+            profile.Priority = Math.Clamp(profile.Priority, -1000, 1000);
         }
 
+        var presetIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var preset in settings.LayoutPresets)
         {
-            if (string.IsNullOrWhiteSpace(preset.Id))
+            if (string.IsNullOrWhiteSpace(preset.Id) || !presetIds.Add(preset.Id))
             {
                 preset.Id = Guid.NewGuid().ToString("N");
+                presetIds.Add(preset.Id);
             }
 
             preset.MonitorModes ??= new Dictionary<string, DisplayModePreset>(StringComparer.OrdinalIgnoreCase);
+            preset.MonitorModes = preset.MonitorModes
+                .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && kvp.Value is not null)
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
         }
 
         settings.LastSeenVersion ??= string.Empty;
@@ -258,9 +299,15 @@ public sealed class SettingsService
 
         lock (_lock)
         {
-            Current = imported.Clone();
-            NormalizeSettings(Current, migrateLegacyInstall: false);
-            Save_NoLock();
+            var candidate = imported.Clone();
+            NormalizeSettings(candidate, migrateLegacyInstall: false);
+            if (!Save_NoLock(candidate, out var saveError))
+            {
+                SaveFailed?.Invoke(this, saveError ?? "Imported settings could not be saved.");
+                return false;
+            }
+
+            Current = candidate;
         }
 
         Changed?.Invoke(this, EventArgs.Empty);

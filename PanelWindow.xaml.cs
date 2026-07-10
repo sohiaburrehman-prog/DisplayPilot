@@ -16,6 +16,7 @@ using PrimaryDisplaySwap.Services;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Button = System.Windows.Controls.Button;
+using CheckBox = System.Windows.Controls.CheckBox;
 using Color = System.Windows.Media.Color;
 using ComboBox = System.Windows.Controls.ComboBox;
 using Cursors = System.Windows.Input.Cursors;
@@ -694,6 +695,15 @@ public partial class PanelWindow : Window
         grid.Children.Add(refreshCombo);
         grid.Children.Add(applyButton);
 
+        // HDR toggle: hidden unless the monitor reports HDR support.
+        var hdrCheck = new CheckBox
+        {
+            Style = (Style)FindResource("DarkCheckBox"),
+            Content = "HDR",
+            Margin = new Thickness(0, 10, 0, 0),
+            Visibility = Visibility.Collapsed,
+        };
+
         var loaded = false;
         var suppressComboEvents = false;
         IReadOnlyList<DisplayMode> modes = Array.Empty<DisplayMode>();
@@ -768,6 +778,14 @@ public partial class PanelWindow : Window
             }
 
             applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
+
+            // Programmatic IsChecked does not raise Click, so no event suppression needed.
+            var hdr = _displayManager.GetHdrStatus(deviceName);
+            if (hdr is { Supported: true })
+            {
+                hdrCheck.IsChecked = hdr.Enabled;
+                hdrCheck.Visibility = Visibility.Visible;
+            }
         }
 
         _pendingModeLoads.Add(LoadModes);
@@ -818,6 +836,30 @@ public partial class PanelWindow : Window
             }
         };
 
+        hdrCheck.Click += async (_, _) =>
+        {
+            var enable = hdrCheck.IsChecked == true;
+            try
+            {
+                hdrCheck.IsEnabled = false;
+                SetBusy(true, $"{(enable ? "Enabling" : "Disabling")} HDR…");
+                await Task.Run(() => _displayManager.SetHdrEnabled(deviceName, enable));
+                ShowStatus(
+                    $"{MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current)}: HDR {(enable ? "on" : "off")}.",
+                    success: true);
+            }
+            catch (Exception ex)
+            {
+                hdrCheck.IsChecked = !enable;
+                ShowStatus(ex.Message, success: false);
+            }
+            finally
+            {
+                SetBusy(false);
+                hdrCheck.IsEnabled = true;
+            }
+        };
+
         var card = new Border
         {
             Background = (Brush)FindResource("CardBrush"),
@@ -851,6 +893,7 @@ public partial class PanelWindow : Window
         var content = new StackPanel();
         content.Children.Add(header);
         content.Children.Add(grid);
+        content.Children.Add(hdrCheck);
         card.Child = content;
         return card;
     }

@@ -2,7 +2,10 @@ namespace PrimaryDisplaySwap;
 
 static class Program
 {
-    private const string SingleInstanceMutexName = "Global\\DisplayPilot_SingleInstance_v1";
+    // Keep both synchronization objects session-local. A global mutex paired
+    // with a local wake event blocks other Windows/RDP sessions but cannot
+    // signal the already-running instance in the other session.
+    private const string SingleInstanceMutexName = "Local\\DisplayPilot_SingleInstance_v1";
     private const string ShowPanelEventName = "Local\\DisplayPilot_ShowPanel_v1";
 
     /// <summary>Argument appended to the autostart registry entry so a boot

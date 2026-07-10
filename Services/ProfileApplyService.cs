@@ -39,6 +39,8 @@ public static class ProfileApplyService
         if (target.IsPrimary)
         {
             var label = MonitorDisplayHelper.GetDisplayName(target, settings);
+            RecordProfileUsed(profile, settingsService);
+            windowRelocation?.BeginWatch(profile, detectedLauncherChild: null);
             AppLogger.Log($"Profile apply skip [{profile.DisplayLabel}]: '{label}' is already primary.");
             return new ApplyResult
             {

@@ -13,6 +13,22 @@ internal static class WindowInterop
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct RECT
     {
         public int Left;
@@ -29,9 +45,15 @@ internal static class WindowInterop
     public const int GWL_STYLE = -16;
     public const long WS_CAPTION = 0x00C00000L;
 
+    public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_FRAMECHANGED = 0x0020;
+
+    public const uint MonitorDefaultToNearest = 2;
+
+    /// <summary>MDT_EFFECTIVE_DPI for GetDpiForMonitor.</summary>
+    public const int MdtEffectiveDpi = 0;
 
     public const int SW_RESTORE = 9;
     public const int SW_MAXIMIZE = 3;
@@ -84,6 +106,18 @@ internal static class WindowInterop
 
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern bool GetMonitorInfoW(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    [DllImport("shcore.dll")]
+    public static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(

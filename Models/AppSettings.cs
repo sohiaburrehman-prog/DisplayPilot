@@ -73,6 +73,12 @@ public sealed class AppProfile
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// Conflict priority used when multiple profiles match. Higher values win
+    /// when <see cref="AppSettings.ProfileConflictRule"/> is priority-first.
+    /// </summary>
+    public int Priority { get; set; }
+
+    /// <summary>
     /// After the swap, move the game's main window onto the target monitor if
     /// it opened elsewhere. Fixes games that pick their display during engine
     /// init, before the primary swap lands (launch race).
@@ -144,6 +150,7 @@ public sealed class AppProfile
         TargetMonitorDeviceName = TargetMonitorDeviceName,
         RestoreOnExit = RestoreOnExit,
         Enabled = Enabled,
+        Priority = Priority,
         MoveWindowToTarget = MoveWindowToTarget,
         MatchLauncherChildren = MatchLauncherChildren,
         LastTriggeredUtc = LastTriggeredUtc,
@@ -210,6 +217,16 @@ public enum ThemePreference
     Light = 2,
 }
 
+/// <summary>How DisplayPilot chooses a winner when multiple profiles match.</summary>
+public enum ProfileConflictRule
+{
+    /// <summary>Highest numeric priority wins; newest activation breaks ties.</summary>
+    HighestPriority = 0,
+
+    /// <summary>Most recently activated profile wins; priority breaks ties.</summary>
+    MostRecentlyActivated = 1,
+}
+
 /// <summary>
 /// Persisted application settings. Serialized to
 /// %LOCALAPPDATA%\DisplayPilot\settings.json.
@@ -223,7 +240,7 @@ public sealed class AppSettings
     public const uint ModWin = 0x0008;
     public const uint VkM = 0x4D;
 
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -250,6 +267,9 @@ public sealed class AppSettings
     };
 
     public List<AppProfile> Profiles { get; set; } = new();
+
+    /// <summary>Winner selection policy when more than one enabled profile matches.</summary>
+    public ProfileConflictRule ProfileConflictRule { get; set; } = ProfileConflictRule.HighestPriority;
 
     public List<LayoutPreset> LayoutPresets { get; set; } = new();
 
@@ -286,6 +306,7 @@ public sealed class AppSettings
         OpenPanelHotkey = OpenPanelHotkey.Clone(),
         CyclePrimaryHotkey = CyclePrimaryHotkey.Clone(),
         Profiles = Profiles.Select(p => p.Clone()).ToList(),
+        ProfileConflictRule = ProfileConflictRule,
         LayoutPresets = LayoutPresets.Select(p => p.Clone()).ToList(),
         LastUsedProfileId = LastUsedProfileId,
         ProcessWatchIntervalMs = ProcessWatchIntervalMs,

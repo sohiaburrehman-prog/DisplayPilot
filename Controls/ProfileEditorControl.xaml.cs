@@ -41,6 +41,7 @@ public partial class ProfileEditorControl : UserControl
         EditorTitle.Text = "New profile";
         ProcessNameBox.Text = string.Empty;
         ResolvedTargetBox.Text = string.Empty;
+        PriorityBox.Text = "0";
         RestoreOnExitCheck.IsChecked = true;
         MoveWindowCheck.IsChecked = true;
         PopulateRunningProcesses();
@@ -63,6 +64,7 @@ public partial class ProfileEditorControl : UserControl
         EditorTitle.Text = "Edit profile";
         ProcessNameBox.Text = profile.ProcessName;
         ResolvedTargetBox.Text = profile.ResolvedTargetProcessName;
+        PriorityBox.Text = profile.Priority.ToString(System.Globalization.CultureInfo.InvariantCulture);
         RestoreOnExitCheck.IsChecked = profile.RestoreOnExit;
         MoveWindowCheck.IsChecked = profile.MoveWindowToTarget;
         PopulateRunningProcesses();
@@ -256,6 +258,13 @@ public partial class ProfileEditorControl : UserControl
             return;
         }
 
+
+        if (!int.TryParse(PriorityBox.Text.Trim(), out var priority) || priority is < -1000 or > 1000)
+        {
+            StatusChanged?.Invoke(this, "Priority must be a whole number from -1000 to 1000.");
+            return;
+        }
+
         var monitor = monitorItem.Monitor;
         var restore = RestoreOnExitCheck.IsChecked == true;
         var moveWindow = MoveWindowCheck.IsChecked == true;
@@ -278,6 +287,7 @@ public partial class ProfileEditorControl : UserControl
                     TargetMonitorName = monitor.Name,
                     TargetMonitorDeviceName = monitor.DeviceName,
                     RestoreOnExit = restore,
+                    Priority = priority,
                     MoveWindowToTarget = moveWindow,
                     Enabled = true,
                 });
@@ -289,6 +299,7 @@ public partial class ProfileEditorControl : UserControl
                 existing.TargetMonitorName = monitor.Name;
                 existing.TargetMonitorDeviceName = monitor.DeviceName;
                 existing.RestoreOnExit = restore;
+                existing.Priority = priority;
                 existing.MoveWindowToTarget = moveWindow;
             }
         });
@@ -319,6 +330,13 @@ public partial class ProfileEditorControl : UserControl
             return;
         }
 
+
+        if (!int.TryParse(PriorityBox.Text.Trim(), out var priority) || priority is < -1000 or > 1000)
+        {
+            StatusChanged?.Invoke(this, "Priority must be a whole number from -1000 to 1000.");
+            return;
+        }
+
         var draft = new AppProfile
         {
             Id = _editingProfileId ?? "draft",
@@ -329,6 +347,7 @@ public partial class ProfileEditorControl : UserControl
             TargetMonitorName = monitorItem.Monitor.Name,
             TargetMonitorDeviceName = monitorItem.Monitor.DeviceName,
             RestoreOnExit = RestoreOnExitCheck.IsChecked == true,
+            Priority = priority,
             Enabled = true,
         };
 

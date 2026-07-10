@@ -19,6 +19,7 @@ public partial class ProfilesWindow : Window
     private readonly SettingsService _settings;
     private readonly ProcessWatcherService? _processWatcher;
     private readonly ProfileEditorControl _profileEditor;
+    private bool _loadingConflictRule;
 
     public ProfilesWindow(
         DisplayManager displayManager,
@@ -40,11 +41,40 @@ public partial class ProfilesWindow : Window
 
         if (_processWatcher is not null)
         {
-            _processWatcher.ActiveProfileChanged += (_, _) => Dispatcher.BeginInvoke(RebuildProfileList);
+            _processWatcher.ActiveProfileChanged += ProcessWatcher_ActiveProfileChanged;
         }
 
+        LoadConflictRule();
         RebuildProfileList();
         RebuildPresetList();
+    }
+
+    private void ProcessWatcher_ActiveProfileChanged(object? sender, EventArgs e) =>
+        Dispatcher.BeginInvoke(RebuildProfileList);
+
+    private void LoadConflictRule()
+    {
+        _loadingConflictRule = true;
+        ConflictRuleCombo.SelectedIndex = _settings.Current.ProfileConflictRule == ProfileConflictRule.MostRecentlyActivated
+            ? 1
+            : 0;
+        _loadingConflictRule = false;
+    }
+
+    private void ConflictRule_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_loadingConflictRule || ConflictRuleCombo.SelectedItem is not System.Windows.Controls.ComboBoxItem item)
+        {
+            return;
+        }
+
+        var rule = string.Equals(item.Tag?.ToString(), nameof(ProfileConflictRule.MostRecentlyActivated), StringComparison.Ordinal)
+            ? ProfileConflictRule.MostRecentlyActivated
+            : ProfileConflictRule.HighestPriority;
+        _settings.Update(s => s.ProfileConflictRule = rule);
+        SetStatus(rule == ProfileConflictRule.HighestPriority
+            ? "Conflict rule saved: highest priority wins."
+            : "Conflict rule saved: most recently activated wins.");
     }
 
     public void BeginAddProfile()
@@ -68,6 +98,7 @@ public partial class ProfilesWindow : Window
         }
 
         _profileEditor.RefreshMonitors();
+        LoadConflictRule();
         RebuildProfileList();
         RebuildPresetList();
     }
@@ -440,4 +471,14 @@ public partial class ProfilesWindow : Window
     private void SetStatus(string message) => StatusText.Text = message;
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        if (_processWatcher is not null)
+        {
+            _processWatcher.ActiveProfileChanged -= ProcessWatcher_ActiveProfileChanged;
+        }
+
+        base.OnClosed(e);
+    }
 }
