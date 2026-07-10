@@ -4,3 +4,6 @@
 ## 2024-05-24 - `QueryActiveConfig` is an expensive Win32 call
 **Learning:** `QueryActiveConfig` (which wraps `QueryDisplayConfig`) is an expensive Win32 API call. When retrieving monitor information, we were making this call twice: once for friendly names and once for virtual-desktop bounds.
 **Action:** Combine operations that rely on `QueryActiveConfig` into a single loop to halve the number of expensive system calls and reduce micro-stutters when `GetMonitors` is called.
+## 2024-05-24 - High-frequency polling loops cause Gen0 GC pressure
+**Learning:** In C# background services, creating new collections (like `.ToList()` or `.ToHashSet()`) on every timer tick creates unnecessary Gen0 Garbage Collection pressure, which can lead to micro-stutters.
+**Action:** Lift collection allocations to private readonly class-level fields. On each loop iteration, use `.Clear()` and populate the reused collections via standard `foreach` loops instead of inline LINQ to keep memory allocations strictly at zero.
