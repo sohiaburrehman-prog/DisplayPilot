@@ -330,6 +330,15 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // Fast-path: If no profile is active, and we weren't previously tracking one,
+        // skip the expensive GetMonitors() (Win32 QueryDisplayConfig) system call.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            _forceReconcile = false;
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
