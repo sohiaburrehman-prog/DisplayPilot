@@ -33,6 +33,14 @@ public sealed class ProcessWatcherService : IDisposable
     private readonly Dictionary<string, LauncherChildTracker.WatchState> _launcherWatch = new(StringComparer.Ordinal);
     private readonly List<LauncherChildTracker.ProcessStart> _recentProcessStarts = new();
 
+    // Reusable collections for Poll() to reduce GC pressure
+    private readonly List<AppProfile> _reusableProfiles = new();
+    private readonly HashSet<string> _reusableRunningNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<LauncherChildTracker.ProcessStart> _reusableRecentStarts = new();
+    private readonly List<ProfileConflictResolver.Candidate> _reusableCandidates = new();
+    private readonly HashSet<string> _reusableLiveIds = new(StringComparer.Ordinal);
+    private readonly List<string> _reusableStaleIds = new();
+
     private System.Threading.Timer? _timer;
     private ManagementEventWatcher? _startWatcher;
     private bool _polling;
@@ -221,24 +229,33 @@ public sealed class ProcessWatcherService : IDisposable
         try
         {
             var settings = _settings.Current;
-            var profiles = settings.Profiles
-                .Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.ProcessName))
-                .Select(p => p.Clone())
-                .ToList();
-            var currentProcesses = GetRunningProcesses();
-            var runningNames = currentProcesses
-                .Select(p => p.Name)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            IReadOnlyList<LauncherChildTracker.ProcessStart> recentStarts;
+            _reusableProfiles.Clear();
+            foreach (var p in settings.Profiles)
+            {
+                if (p.Enabled && !string.IsNullOrWhiteSpace(p.ProcessName))
+                {
+                    _reusableProfiles.Add(p.Clone());
+                }
+            }
+
+            var currentProcesses = GetRunningProcesses();
+
+            _reusableRunningNames.Clear();
+            foreach (var p in currentProcesses)
+            {
+                _reusableRunningNames.Add(p.Name);
+            }
+
+            _reusableRecentStarts.Clear();
             lock (_lock)
             {
                 TrimRecentProcessStarts_NoLock();
-                recentStarts = _recentProcessStarts.ToList();
+                _reusableRecentStarts.AddRange(_recentProcessStarts);
             }
 
-            var candidates = new List<ProfileConflictResolver.Candidate>();
-            foreach (var profile in profiles)
+            _reusableCandidates.Clear();
+            foreach (var profile in _reusableProfiles)
             {
                 string? detectedChild = null;
                 if (LauncherChildTracker.IsLauncherProfile(profile))
@@ -250,14 +267,14 @@ public sealed class ProcessWatcherService : IDisposable
                     }
 
                     detectedChild = LauncherChildTracker.UpdateWatchState(
-                        profile, watchState, currentProcesses, recentStarts);
+                        profile, watchState, currentProcesses, _reusableRecentStarts);
                 }
                 else
                 {
                     _launcherWatch.Remove(profile.Id);
                 }
 
-                var isRunning = ProfileMatcher.IsProfileActive(profile, runningNames, detectedChild);
+                var isRunning = ProfileMatcher.IsProfileActive(profile, _reusableRunningNames, detectedChild);
                 var wasRunning = _runningState.TryGetValue(profile.Id, out var previous) && previous;
                 _runningState[profile.Id] = isRunning;
 
@@ -275,14 +292,28 @@ public sealed class ProcessWatcherService : IDisposable
                         _activationOrder[profile.Id] = order;
                     }
 
-                    candidates.Add(new ProfileConflictResolver.Candidate(profile, order, detectedChild));
+                    _reusableCandidates.Add(new ProfileConflictResolver.Candidate(profile, order, detectedChild));
                 }
             }
 
-            ReconcileWinner(candidates, settings.ProfileConflictRule);
+            ReconcileWinner(_reusableCandidates, settings.ProfileConflictRule);
 
-            var liveIds = profiles.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
-            foreach (var staleId in _runningState.Keys.Where(k => !liveIds.Contains(k)).ToList())
+            _reusableLiveIds.Clear();
+            foreach (var p in _reusableProfiles)
+            {
+                _reusableLiveIds.Add(p.Id);
+            }
+
+            _reusableStaleIds.Clear();
+            foreach (var k in _runningState.Keys)
+            {
+                if (!_reusableLiveIds.Contains(k))
+                {
+                    _reusableStaleIds.Add(k);
+                }
+            }
+
+            foreach (var staleId in _reusableStaleIds)
             {
                 _runningState.Remove(staleId);
                 _activationOrder.Remove(staleId);
