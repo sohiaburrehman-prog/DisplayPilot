@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 
@@ -28,7 +29,8 @@ internal static class ProfileUiHelper
         IReadOnlyList<MonitorInfo> monitors,
         AppSettings settings,
         FrameworkElement host,
-        bool isActiveNow,
+        bool isWinnerNow,
+        bool isMatchedNow,
         Action<string, bool> onEnabledChanged,
         Action<string> onEdit,
         Action<string> onDuplicate,
@@ -50,9 +52,6 @@ internal static class ProfileUiHelper
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         var titleRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
@@ -64,18 +63,20 @@ internal static class ProfileUiHelper
             Foreground = (Brush)host.FindResource("TextPrimaryBrush"),
         });
 
-        if (isActiveNow)
+        if (isWinnerNow || isMatchedNow)
         {
             titleRow.Children.Add(new Border
             {
-                Background = (Brush)host.FindResource("AccentBrush"),
+                Background = isWinnerNow
+                    ? (Brush)host.FindResource("AccentBrush")
+                    : (Brush)host.FindResource("CardHoverBrush"),
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(6, 2, 6, 2),
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock
                 {
-                    Text = "Active now",
+                    Text = isWinnerNow ? "Controlling display" : "Matched · waiting",
                     FontSize = 10,
                     FontWeight = FontWeights.SemiBold,
                     Foreground = (Brush)host.FindResource("TextPrimaryBrush"),
@@ -96,10 +97,27 @@ internal static class ProfileUiHelper
             }
         }
 
-        var detail = $"→ {targetLabel}  ·  priority {profile.Priority}";
+        var scene = string.IsNullOrWhiteSpace(profile.DisplaySceneId)
+            ? null
+            : settings.LayoutPresets.FirstOrDefault(s => string.Equals(
+                s.Id,
+                profile.DisplaySceneId,
+                StringComparison.Ordinal));
+        var actionLabel = string.IsNullOrWhiteSpace(profile.DisplaySceneId)
+            ? $"→ {targetLabel}"
+            : scene is null ? "→ missing scene" : $"→ scene: {scene.Name}";
+        var detail = $"{actionLabel}  ·  {DescribePriority(profile.Priority)} priority";
         if (profile.RestoreOnExit)
         {
             detail += "  ·  restores on exit";
+        }
+        if (!string.IsNullOrWhiteSpace(profile.ExecutablePath))
+        {
+            detail += "  ·  path constrained";
+        }
+        if (!string.IsNullOrWhiteSpace(profile.WindowTitleContains))
+        {
+            detail += "  ·  title constrained";
         }
         if (!profile.Enabled)
         {
@@ -118,6 +136,7 @@ internal static class ProfileUiHelper
             FontSize = 11,
             Foreground = (Brush)host.FindResource("TextMutedBrush"),
             Margin = new Thickness(0, 2, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
         });
         Grid.SetColumn(info, 0);
         grid.Children.Add(info);
@@ -131,63 +150,73 @@ internal static class ProfileUiHelper
             ToolTip = "Enable or disable this profile",
         };
         var id = profile.Id;
+        AutomationProperties.SetName(enabledToggle, $"{(profile.Enabled ? "Disable" : "Enable")} profile {profile.DisplayLabel}");
         enabledToggle.Checked += (_, _) => onEnabledChanged(id, true);
         enabledToggle.Unchecked += (_, _) => onEnabledChanged(id, false);
         Grid.SetColumn(enabledToggle, 1);
         grid.Children.Add(enabledToggle);
-
-        var testButton = new Button
-        {
-            Style = (Style)host.FindResource("MiniButton"),
-            Content = "Test",
-            Width = 58,
-            Margin = new Thickness(0, 0, 8, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = "Check if this profile would match right now",
-        };
-        testButton.Click += (_, _) => onTest(id);
-        Grid.SetColumn(testButton, 2);
-        grid.Children.Add(testButton);
 
         var editButton = new Button
         {
             Style = (Style)host.FindResource("MiniButton"),
             Content = "Edit",
             Width = 64,
+            Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
+        AutomationProperties.SetName(editButton, $"Edit profile {profile.DisplayLabel}");
         editButton.Click += (_, _) => onEdit(id);
-        Grid.SetColumn(editButton, 3);
+        Grid.SetColumn(editButton, 2);
         grid.Children.Add(editButton);
 
-        var duplicateButton = new Button
+        var moreButton = new Button
         {
             Style = (Style)host.FindResource("MiniButton"),
-            Content = "Duplicate",
-            Width = 78,
-            Margin = new Thickness(8, 0, 0, 0),
+            Content = "⋯",
+            Width = 40,
             VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = "Create a copy of this profile",
+            ToolTip = "More profile actions",
         };
-        duplicateButton.Click += (_, _) => onDuplicate(id);
-        Grid.SetColumn(duplicateButton, 4);
-        grid.Children.Add(duplicateButton);
+        AutomationProperties.SetName(moreButton, $"More actions for {profile.DisplayLabel}");
 
-        var removeButton = new Button
+        var menu = new ContextMenu
         {
-            Style = (Style)host.FindResource("MiniButton"),
-            Content = "Delete",
-            Width = 72,
-            Margin = new Thickness(8, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
+            Background = (Brush)host.FindResource("MapSurfaceBrush"),
+            BorderBrush = (Brush)host.FindResource("HairlineBrush"),
+            Foreground = (Brush)host.FindResource("TextPrimaryBrush"),
         };
-        removeButton.Click += (_, _) => onRemove(id);
-        Grid.SetColumn(removeButton, 5);
-        grid.Children.Add(removeButton);
+        var testItem = new MenuItem { Header = "Test profile" };
+        testItem.Click += (_, _) => onTest(id);
+        var duplicateItem = new MenuItem { Header = "Duplicate" };
+        duplicateItem.Click += (_, _) => onDuplicate(id);
+        var deleteItem = new MenuItem { Header = "Delete" };
+        deleteItem.Click += (_, _) => onRemove(id);
+        menu.Items.Add(testItem);
+        menu.Items.Add(duplicateItem);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(deleteItem);
+        moreButton.ContextMenu = menu;
+        moreButton.Click += (_, _) =>
+        {
+            menu.PlacementTarget = moreButton;
+            menu.IsOpen = true;
+        };
+
+        Grid.SetColumn(moreButton, 3);
+        grid.Children.Add(moreButton);
 
         border.Child = grid;
         return border;
     }
+
+    private static string DescribePriority(int priority) => priority switch
+    {
+        <= -10 => "Low",
+        0 => "Normal",
+        >= 100 => "Critical",
+        >= 10 => "High",
+        _ => $"Custom ({priority})",
+    };
 
     public static void TestProfile(
         AppProfile profile,
@@ -197,7 +226,8 @@ internal static class ProfileUiHelper
     {
         try
         {
-            var running = ProcessWatcherService.GetRunningProcessNames();
+            var processes = ProcessWatcherService.GetRunningProcesses(includeDetails: true);
+            var running = processes.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
             IReadOnlyList<MonitorInfo> monitors;
             try
             {
@@ -208,7 +238,25 @@ internal static class ProfileUiHelper
                 monitors = Array.Empty<MonitorInfo>();
             }
 
-            var evaluation = ProfileMatcher.Evaluate(profile, running, monitors);
+            var scene = string.IsNullOrWhiteSpace(profile.DisplaySceneId)
+                ? null
+                : settings.LayoutPresets.FirstOrDefault(s => string.Equals(
+                    s.Id,
+                    profile.DisplaySceneId,
+                    StringComparison.Ordinal));
+            var effectiveProfile = profile.Clone();
+            if (!string.IsNullOrWhiteSpace(profile.DisplaySceneId))
+            {
+                effectiveProfile.TargetMonitorName = scene?.Name ?? "Missing display scene";
+                effectiveProfile.TargetMonitorDeviceName = scene?.PrimaryMonitorDeviceName
+                    ?? $"missing-scene:{profile.DisplaySceneId}";
+            }
+
+            var evaluation = ProfileMatcher.Evaluate(
+                effectiveProfile,
+                running,
+                monitors,
+                runningProcesses: processes);
 
             AppLogger.Log($"Profile test [{profile.DisplayLabel}]: {evaluation.Summary}");
 
@@ -219,20 +267,40 @@ internal static class ProfileUiHelper
                 details += $"\n\nTarget monitor: {label} ({evaluation.TargetMonitor.DeviceName})";
             }
 
-            if (evaluation.WouldMatch && evaluation.TargetMonitor is not null)
+            var canApply = scene is not null
+                ? evaluation.ProfileEnabled && evaluation.ProcessRunning && evaluation.TargetConnected
+                : evaluation.WouldMatch;
+            if (canApply && evaluation.TargetMonitor is not null)
             {
                 var apply = MessageBox.Show(
-                    details + "\n\nApply now and set that monitor as primary?",
+                    details + (scene is null
+                        ? "\n\nApply now and set that monitor as primary?"
+                        : $"\n\nApply the full \"{scene.Name}\" scene now?"),
                     "Profile test — match",
                     MessageBoxButton.YesNoCancel,
                     MessageBoxImage.Question);
 
                 if (apply == MessageBoxResult.Yes)
                 {
-                    displayManager.SetPrimaryByDeviceName(evaluation.TargetMonitor.DeviceName);
-                    var name = MonitorDisplayHelper.GetDisplayName(evaluation.TargetMonitor, settings);
-                    AppLogger.Log($"Profile test apply [{profile.DisplayLabel}]: primary set to '{name}'.");
-                    setStatus?.Invoke($"Applied — {name} is now primary.");
+                    if (scene is not null)
+                    {
+                        var result = LayoutPresetService.TryApply(scene, settings, displayManager);
+                        var keep = result.Applied && result.Changes.Count > 0 && result.RollbackScene is not null
+                            ? SceneConfirmationWindow.Confirm(null, scene.Name)
+                            : result.Applied;
+                        if (!keep && result.RollbackScene is not null)
+                        {
+                            LayoutPresetService.TryRestore(result.RollbackScene, settings, displayManager);
+                        }
+                        setStatus?.Invoke(keep ? $"Applied scene — {scene.Name}." : "Scene reverted.");
+                    }
+                    else
+                    {
+                        displayManager.SetPrimaryByDeviceName(evaluation.TargetMonitor.DeviceName);
+                        var name = MonitorDisplayHelper.GetDisplayName(evaluation.TargetMonitor, settings);
+                        AppLogger.Log($"Profile test apply [{profile.DisplayLabel}]: primary set to '{name}'.");
+                        setStatus?.Invoke($"Applied — {name} is now primary.");
+                    }
                 }
 
                 return;

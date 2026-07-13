@@ -80,6 +80,7 @@
                             Style="{StaticResource CaptionButton}"
                             Content="&#xE70D;"
                             ToolTip="Hide to tray (Ctrl+Shift+M to reopen)"
+                            AutomationProperties.Name="Hide DisplayPilot to the notification area"
                             Click="Hide_Click" />
                 </Grid>
             </Border>
@@ -135,6 +136,7 @@
                                 Content="&#xE711;"
                                 VerticalAlignment="Top"
                                 ToolTip="Dismiss"
+                                AutomationProperties.Name="Dismiss update notification"
                                 Click="UpdateBannerDismiss_Click" />
                     </Grid>
                 </Border>
@@ -173,6 +175,7 @@
                                 Content="&#xE711;"
                                 VerticalAlignment="Top"
                                 ToolTip="Dismiss"
+                                AutomationProperties.Name="Dismiss what's new notification"
                                 Click="WhatsNewBannerDismiss_Click" />
                     </Grid>
                 </Border>

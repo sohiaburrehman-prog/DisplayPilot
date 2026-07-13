@@ -11,6 +11,8 @@ public static class ProfileApplyService
         public bool SkippedAlreadyPrimary { get; init; }
         public bool SkippedMissingMonitor { get; init; }
         public MonitorInfo? TargetMonitor { get; init; }
+        public string? SceneName { get; init; }
+        public LayoutPreset? RollbackScene { get; init; }
         public string Message { get; init; } = string.Empty;
     }
 
@@ -24,6 +26,39 @@ public static class ProfileApplyService
         if (profile is null || !profile.Enabled)
         {
             return new ApplyResult { Message = "Profile is disabled or missing." };
+        }
+
+        if (!string.IsNullOrWhiteSpace(profile.DisplaySceneId))
+        {
+            var scene = settings.LayoutPresets.FirstOrDefault(s =>
+                string.Equals(s.Id, profile.DisplaySceneId, StringComparison.Ordinal));
+            if (scene is null)
+            {
+                return new ApplyResult
+                {
+                    Message = $"Profile scene '{profile.DisplaySceneId}' no longer exists.",
+                };
+            }
+
+            var sceneResult = LayoutPresetService.TryApply(scene, settings, displayManager);
+            if (!sceneResult.Applied)
+            {
+                return new ApplyResult { Message = sceneResult.Message, SceneName = scene.Name };
+            }
+
+            var sceneTarget = displayManager.GetMonitors().FirstOrDefault(m =>
+                string.Equals(m.DeviceName, scene.PrimaryMonitorDeviceName, StringComparison.OrdinalIgnoreCase));
+            RecordProfileUsed(profile, settingsService);
+            windowRelocation?.BeginWatch(profile, detectedLauncherChild: null);
+            AppLogger.Log($"Profile applied [{profile.DisplayLabel}]: scene '{scene.Name}'.");
+            return new ApplyResult
+            {
+                Applied = true,
+                TargetMonitor = sceneTarget,
+                SceneName = scene.Name,
+                RollbackScene = sceneResult.RollbackScene,
+                Message = $"Display scene \"{scene.Name}\" applied.",
+            };
         }
 
         var monitors = displayManager.GetMonitors();

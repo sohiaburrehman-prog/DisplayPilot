@@ -19,6 +19,9 @@ public static class ProfileMatcher
         public MonitorInfo? TargetMonitor { get; init; }
         public bool TargetConnected { get; init; }
         public bool TargetIsPrimary { get; init; }
+        public bool PathConstraintMatched { get; init; } = true;
+        public bool WindowTitleConstraintMatched { get; init; } = true;
+        public IReadOnlyList<string> Reasons { get; init; } = Array.Empty<string>();
         public string Summary { get; init; } = string.Empty;
     }
 
@@ -30,7 +33,8 @@ public static class ProfileMatcher
         AppProfile profile,
         ISet<string> runningProcessNames,
         IReadOnlyList<MonitorInfo> connectedMonitors,
-        string? detectedLauncherChild = null)
+        string? detectedLauncherChild = null,
+        IReadOnlyList<LauncherChildTracker.RunningProcess>? runningProcesses = null)
     {
         if (profile is null)
         {
@@ -46,16 +50,28 @@ public static class ProfileMatcher
             };
         }
 
-        var processRunning = IsProfileActive(profile, runningProcessNames, detectedLauncherChild);
+        var nameRunning = IsNameActive(profile, runningProcessNames, detectedLauncherChild);
+        var conditionsMatched = MatchAdditionalConditions(
+            profile,
+            runningProcesses,
+            detectedLauncherChild,
+            out var pathMatched,
+            out var titleMatched,
+            out var conditionReasons);
+        var processRunning = nameRunning && conditionsMatched;
         var target = ResolveTarget(profile, connectedMonitors);
         var connected = target is not null;
         var isPrimary = target?.IsPrimary == true;
 
         string summary;
-        if (!processRunning)
+        if (!nameRunning)
         {
             var watch = DescribeWatchTargets(profile, detectedLauncherChild);
-            summary = $"No match — neither '{watch}' is running.";
+            summary = $"No match — '{watch}' is not running.";
+        }
+        else if (!conditionsMatched)
+        {
+            summary = $"Process name matched, but {string.Join(" and ", conditionReasons)}.";
         }
         else if (!connected)
         {
@@ -78,6 +94,9 @@ public static class ProfileMatcher
             TargetMonitor = target,
             TargetConnected = connected,
             TargetIsPrimary = isPrimary,
+            PathConstraintMatched = pathMatched,
+            WindowTitleConstraintMatched = titleMatched,
+            Reasons = conditionReasons,
             Summary = summary,
         };
     }
@@ -149,6 +168,22 @@ public static class ProfileMatcher
     public static bool IsProfileActive(
         AppProfile profile,
         ISet<string> runningProcessNames,
+        string? detectedLauncherChild = null,
+        IReadOnlyList<LauncherChildTracker.RunningProcess>? runningProcesses = null)
+    {
+        return IsNameActive(profile, runningProcessNames, detectedLauncherChild) &&
+               MatchAdditionalConditions(
+                   profile,
+                   runningProcesses,
+                   detectedLauncherChild,
+                   out _,
+                   out _,
+                   out _);
+    }
+
+    private static bool IsNameActive(
+        AppProfile profile,
+        ISet<string> runningProcessNames,
         string? detectedLauncherChild = null)
     {
         if (profile is null || runningProcessNames is null || runningProcessNames.Count == 0)
@@ -199,6 +234,86 @@ public static class ProfileMatcher
         }
 
         return false;
+    }
+
+    private static bool MatchAdditionalConditions(
+        AppProfile profile,
+        IReadOnlyList<LauncherChildTracker.RunningProcess>? runningProcesses,
+        string? detectedLauncherChild,
+        out bool pathMatched,
+        out bool titleMatched,
+        out IReadOnlyList<string> reasons)
+    {
+        pathMatched = string.IsNullOrWhiteSpace(profile.ExecutablePath);
+        titleMatched = string.IsNullOrWhiteSpace(profile.WindowTitleContains);
+        var failures = new List<string>();
+        if (pathMatched && titleMatched)
+        {
+            reasons = failures;
+            return true;
+        }
+
+        var candidateNames = GetRuntimeCandidateNames(profile, detectedLauncherChild);
+        var candidates = runningProcesses?
+            .Where(p => candidateNames.Contains(NormalizeProcessName(p.Name)))
+            .ToList() ?? new List<LauncherChildTracker.RunningProcess>();
+
+        if (!pathMatched)
+        {
+            var expected = NormalizePath(profile.ExecutablePath);
+            pathMatched = candidates.Any(p =>
+                !string.IsNullOrWhiteSpace(p.ExecutablePath) &&
+                string.Equals(NormalizePath(p.ExecutablePath), expected, StringComparison.OrdinalIgnoreCase));
+            if (!pathMatched)
+            {
+                failures.Add($"no matching process is running from '{profile.ExecutablePath}'");
+            }
+        }
+
+        if (!titleMatched)
+        {
+            titleMatched = candidates.Any(p =>
+                !string.IsNullOrWhiteSpace(p.WindowTitle) &&
+                p.WindowTitle.Contains(profile.WindowTitleContains.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (!titleMatched)
+            {
+                failures.Add($"no matching window title contains '{profile.WindowTitleContains}'");
+            }
+        }
+
+        reasons = failures;
+        return pathMatched && titleMatched;
+    }
+
+    private static HashSet<string> GetRuntimeCandidateNames(AppProfile profile, string? detectedLauncherChild)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(profile.NormalizedProcessName))
+        {
+            names.Add(profile.NormalizedProcessName);
+        }
+        if (profile.HasResolvedTarget)
+        {
+            names.Add(profile.NormalizedResolvedTarget);
+        }
+        if (!string.IsNullOrWhiteSpace(detectedLauncherChild))
+        {
+            names.Add(NormalizeProcessName(detectedLauncherChild));
+        }
+        return names;
+    }
+
+    private static string NormalizePath(string? path)
+    {
+        var value = path?.Trim().Trim('"') ?? string.Empty;
+        try
+        {
+            return Path.GetFullPath(value).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch
+        {
+            return value;
+        }
     }
 
     private static string DescribeWatchTargets(AppProfile profile, string? detectedLauncherChild)

@@ -178,6 +178,9 @@ public sealed class SettingsService
             }
 
             profile.ResolvedTargetProcessName ??= string.Empty;
+            profile.ExecutablePath ??= string.Empty;
+            profile.WindowTitleContains ??= string.Empty;
+            profile.DisplaySceneId ??= string.Empty;
             profile.MatchLauncherChildren = profile.MatchLauncherChildren || LauncherCatalog.IsKnownLauncher(profile.ProcessName);
             profile.Priority = Math.Clamp(profile.Priority, -1000, 1000);
         }
@@ -193,6 +196,10 @@ public sealed class SettingsService
 
             preset.MonitorModes ??= new Dictionary<string, DisplayModePreset>(StringComparer.OrdinalIgnoreCase);
             preset.MonitorModes = preset.MonitorModes
+                .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && kvp.Value is not null)
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
+            preset.MonitorStates ??= new Dictionary<string, DisplaySceneMonitorState>(StringComparer.OrdinalIgnoreCase);
+            preset.MonitorStates = preset.MonitorStates
                 .Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && kvp.Value is not null)
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
         }

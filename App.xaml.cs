@@ -91,7 +91,6 @@ public partial class App : System.Windows.Application
         _processWatcher.ActiveProfileChanged += (_, _) => Dispatcher.BeginInvoke(() =>
         {
             _tray?.RefreshMenu();
-            _profilesWindow?.RefreshMonitors();
         });
         _processWatcher.StatusMessage += (_, message) => Dispatcher.BeginInvoke(() =>
         {
@@ -194,7 +193,7 @@ public partial class App : System.Windows.Application
             _panel?.RefreshMonitors();
             _tray?.RefreshMenu();
             _settingsWindow?.LoadFromSettings();
-            _profilesWindow?.RefreshMonitors();
+            _profilesWindow?.RefreshFromSettings();
         });
     }
 
@@ -213,8 +212,23 @@ public partial class App : System.Windows.Application
         if (announce && result.HasFailure)
         {
             _panel?.ShowExternalStatus(result.FailureMessage, success: false);
+            _settingsWindow?.ShowHotkeyFailure(result.FailureMessage);
             AppLogger.Log(result.FailureMessage);
         }
+    }
+
+    private HotkeyApplyResult ValidateHotkeys(HotkeyConfig openPanel, HotkeyConfig cycle)
+    {
+        var candidate = _settings.Current.Clone();
+        candidate.OpenPanelHotkey = openPanel;
+        candidate.CyclePrimaryHotkey = cycle;
+
+        var result = _hotkeys.Apply(candidate);
+        // Validation is only a preview. Restore the persisted bindings until
+        // SettingsService commits the candidate and raises Changed.
+        _hotkeys.Apply(_settings.Current);
+
+        return result;
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
@@ -332,9 +346,14 @@ public partial class App : System.Windows.Application
             var service = new UpdateService();
             var info = await service.CheckForUpdateAsync().ConfigureAwait(false);
 
+            if (info is null)
+            {
+                return;
+            }
+
             _settings.Update(s => s.LastUpdateCheckUtc = DateTime.UtcNow);
 
-            if (info is null || !info.UpdateAvailable)
+            if (!info.UpdateAvailable)
             {
                 return;
             }
@@ -400,7 +419,16 @@ public partial class App : System.Windows.Application
     {
         if (_settingsWindow is null)
         {
-            _settingsWindow = new SettingsWindow(_settings, RunSetupWizard, () => ShowProfiles());
+            _settingsWindow = new SettingsWindow(
+                _settings,
+                _startupService,
+                RunSetupWizard,
+                () => ShowProfiles(),
+                ShowLog,
+                ValidateHotkeys)
+            {
+                Owner = _panel,
+            };
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             _settingsWindow.Show();
         }
@@ -414,7 +442,10 @@ public partial class App : System.Windows.Application
     {
         if (_profilesWindow is null)
         {
-            _profilesWindow = new ProfilesWindow(_displayManager, _settings, _processWatcher);
+            _profilesWindow = new ProfilesWindow(_displayManager, _settings, _processWatcher)
+            {
+                Owner = _settingsWindow?.IsVisible == true ? _settingsWindow : _panel,
+            };
             _profilesWindow.Closed += (_, _) => _profilesWindow = null;
             _profilesWindow.Show();
             if (beginAdd)
@@ -436,7 +467,10 @@ public partial class App : System.Windows.Application
     {
         if (_logWindow is null)
         {
-            _logWindow = new LogViewerWindow();
+            _logWindow = new LogViewerWindow
+            {
+                Owner = _settingsWindow?.IsVisible == true ? _settingsWindow : _panel,
+            };
             _logWindow.Closed += (_, _) => _logWindow = null;
             _logWindow.Show();
         }

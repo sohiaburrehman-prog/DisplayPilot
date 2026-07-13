@@ -225,6 +225,20 @@ internal sealed class TrayService : IDisposable
             _menu.Items.Add(reapplyItem);
         }
 
+        var scenes = _settings.Current.LayoutPresets;
+        if (scenes.Count > 0)
+        {
+            var sceneMenu = CreateActionItem("Apply display &scene");
+            foreach (var scene in scenes)
+            {
+                var captured = scene;
+                var item = CreateActionItem(captured.Name);
+                item.Click += (_, _) => ApplyScene(captured);
+                sceneMenu.DropDownItems.Add(item);
+            }
+            _menu.Items.Add(sceneMenu);
+        }
+
         var enabledProfiles = _settings.Current.Profiles.Where(p => p.Enabled).ToList();
         if (enabledProfiles.Count == 0)
         {
@@ -242,6 +256,59 @@ internal sealed class TrayService : IDisposable
         }
 
         _menu.Items.Add(applyMenu);
+    }
+
+    private void ApplyScene(LayoutPreset scene)
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var result = LayoutPresetService.TryApply(scene, _settings.Current, _displayManager);
+                if (result.Applied)
+                {
+                    var keep = true;
+                    if (result.Changes.Count > 0 && result.RollbackScene is not null)
+                    {
+                        keep = System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            SceneConfirmationWindow.Confirm(owner: null, scene.Name));
+                    }
+
+                    if (!keep && result.RollbackScene is not null)
+                    {
+                        var restore = LayoutPresetService.TryRestore(
+                            result.RollbackScene,
+                            _settings.Current,
+                            _displayManager);
+                        ShowFeedback(restore.Applied
+                            ? "Previous display scene restored."
+                            : $"Scene restore failed — {restore.Message}");
+                    }
+                    else
+                    {
+                        ShowFeedback(result.Message);
+                    }
+                    PrimaryChanged?.Invoke(this, EventArgs.Empty);
+                }
+                else
+                {
+                    System.Windows.Forms.MessageBox.Show(
+                        result.Message,
+                        "Could not apply display scene",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log($"Tray ApplyScene failed: {ex.Message}");
+                System.Windows.Forms.MessageBox.Show(
+                    ex.Message,
+                    "Could not apply display scene",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        });
     }
 
     private void ApplyProfile(AppProfile profile)

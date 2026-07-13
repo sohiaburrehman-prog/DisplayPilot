@@ -91,6 +91,25 @@ public sealed class AppProfile
     /// </summary>
     public bool MatchLauncherChildren { get; set; } = true;
 
+    /// <summary>
+    /// Optional full executable-path constraint. The process name must still
+    /// match; when this is set, at least one matching process must run from
+    /// this path (case-insensitive).
+    /// </summary>
+    public string ExecutablePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional case-insensitive substring that must appear in the matching
+    /// process's main-window title.
+    /// </summary>
+    public string WindowTitleContains { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional display scene applied when this profile wins. Empty keeps the
+    /// legacy action of changing only the primary monitor.
+    /// </summary>
+    public string DisplaySceneId { get; set; } = string.Empty;
+
     /// <summary>UTC time this profile last activated (auto-swap or manual apply).</summary>
     public DateTime LastTriggeredUtc { get; set; } = DateTime.MinValue;
 
@@ -153,6 +172,9 @@ public sealed class AppProfile
         Priority = Priority,
         MoveWindowToTarget = MoveWindowToTarget,
         MatchLauncherChildren = MatchLauncherChildren,
+        ExecutablePath = ExecutablePath,
+        WindowTitleContains = WindowTitleContains,
+        DisplaySceneId = DisplaySceneId,
         LastTriggeredUtc = LastTriggeredUtc,
     };
 }
@@ -196,6 +218,14 @@ public sealed class LayoutPreset
     public string PrimaryMonitorDeviceName { get; set; } = string.Empty;
     public Dictionary<string, DisplayModePreset> MonitorModes { get; set; } = new();
 
+    /// <summary>
+    /// Complete active-display state keyed by GDI device name. Added in
+    /// schema v6; MonitorModes remains for backward-compatible imports.
+    /// </summary>
+    public Dictionary<string, DisplaySceneMonitorState> MonitorStates { get; set; } = new();
+
+    public bool IsFullScene => MonitorStates.Count > 0;
+
     public LayoutPreset Clone() => new()
     {
         Id = Id,
@@ -205,6 +235,51 @@ public sealed class LayoutPreset
             kvp => kvp.Key,
             kvp => kvp.Value.Clone(),
             StringComparer.OrdinalIgnoreCase),
+        MonitorStates = MonitorStates.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.Clone(),
+            StringComparer.OrdinalIgnoreCase),
+    };
+}
+
+/// <summary>Transactional state captured for one active monitor in a display scene.</summary>
+public sealed class DisplaySceneMonitorState
+{
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public int RefreshRateHz { get; set; }
+    public int PositionX { get; set; }
+    public int PositionY { get; set; }
+
+    /// <summary>Win32 DMDO value: 0, 1, 2, or 3 for 0/90/180/270 degrees.</summary>
+    public uint Orientation { get; set; }
+
+    /// <summary>Null when HDR state could not be read or is unsupported.</summary>
+    public bool? HdrEnabled { get; set; }
+
+    public DisplayMode ToDisplayMode() => new()
+    {
+        Width = Width,
+        Height = Height,
+        RefreshRateHz = RefreshRateHz,
+    };
+
+    public DisplayModePreset ToLegacyMode() => new()
+    {
+        Width = Width,
+        Height = Height,
+        RefreshRateHz = RefreshRateHz,
+    };
+
+    public DisplaySceneMonitorState Clone() => new()
+    {
+        Width = Width,
+        Height = Height,
+        RefreshRateHz = RefreshRateHz,
+        PositionX = PositionX,
+        PositionY = PositionY,
+        Orientation = Orientation,
+        HdrEnabled = HdrEnabled,
     };
 }
 
@@ -240,7 +315,7 @@ public sealed class AppSettings
     public const uint ModWin = 0x0008;
     public const uint VkM = 0x4D;
 
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 7;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 

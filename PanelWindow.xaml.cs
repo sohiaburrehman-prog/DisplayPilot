@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -911,6 +912,9 @@ public partial class PanelWindow : Window
                 ? $"{numberedName} is the primary display"
                 : $"Make {numberedName} the primary display",
         };
+        AutomationProperties.SetName(card, monitor.IsPrimary
+            ? $"{numberedName}, current primary display"
+            : $"Make {numberedName} the primary display");
 
         if (monitor.IsPrimary)
         {

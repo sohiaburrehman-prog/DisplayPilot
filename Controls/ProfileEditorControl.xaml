@@ -16,10 +16,12 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox x:Name="ProcessNameBox" Grid.Column="0"
-                     Style="{StaticResource DarkTextBox}" />
+                     Style="{StaticResource DarkTextBox}"
+                     AutomationProperties.Name="Profile process executable" />
             <ComboBox x:Name="RunningProcessCombo" Grid.Column="1"
                       Style="{StaticResource DarkComboBox}"
                       Width="200" Margin="8,0,0,0"
+                      AutomationProperties.Name="Pick a running process"
                       SelectionChanged="RunningProcess_Changed" />
         </Grid>
         <TextBlock Text="Pick from running processes or common launchers. For Steam/Epic/etc., set the game exe below when possible."
@@ -48,10 +50,12 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBox x:Name="ResolvedTargetBox" Grid.Column="0"
-                             Style="{StaticResource DarkTextBox}" />
+                             Style="{StaticResource DarkTextBox}"
+                             AutomationProperties.Name="Resolved game executable" />
                     <ComboBox x:Name="ResolvedTargetCombo" Grid.Column="1"
                               Style="{StaticResource DarkComboBox}"
                               Width="180" Margin="8,0,0,0"
+                              AutomationProperties.Name="Pick a running game"
                               SelectionChanged="ResolvedTarget_Changed" />
                     <Button Grid.Column="2"
                             Content="Suggest running games"
@@ -63,11 +67,69 @@
             </StackPanel>
         </Border>
 
-        <TextBlock Text="Make this monitor primary"
+        <Expander Header="Advanced matching (optional)"
+                  Foreground="{StaticResource TextPrimaryBrush}"
+                  Margin="0,0,0,12">
+            <Border Background="{StaticResource MapSurfaceBrush}"
+                    BorderBrush="{StaticResource HairlineBrush}"
+                    BorderThickness="1" CornerRadius="8"
+                    Padding="12,10" Margin="0,6,0,0">
+                <StackPanel>
+                    <TextBlock Text="Executable path"
+                               FontSize="11" Foreground="{StaticResource TextMutedBrush}"
+                               Margin="0,0,0,4" />
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="ExecutablePathBox"
+                                 Style="{StaticResource DarkTextBox}"
+                                 AutomationProperties.Name="Required executable path" />
+                        <Button Grid.Column="1" Content="Browse…"
+                                Style="{StaticResource MiniButton}"
+                                Margin="8,0,0,0" Padding="10,4"
+                                Click="BrowseExecutable_Click" />
+                    </Grid>
+                    <TextBlock Text="When set, the process name only matches from this exact path."
+                               FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Margin="0,0,0,10" />
+
+                    <TextBlock Text="Window title contains"
+                               FontSize="11" Foreground="{StaticResource TextMutedBrush}"
+                               Margin="0,0,0,4" />
+                    <TextBox x:Name="WindowTitleBox"
+                             Style="{StaticResource DarkTextBox}"
+                             AutomationProperties.Name="Required window title text" />
+                    <TextBlock Text="Case-insensitive. Useful when one executable hosts several games, sessions, or modes."
+                               FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+        </Expander>
+
+        <TextBlock Text="Display action"
+                   FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
+        <ComboBox x:Name="SceneCombo"
+                  Style="{StaticResource DarkComboBox}"
+                  DisplayMemberPath="Label"
+                  AutomationProperties.Name="Display scene to apply"
+                  SelectionChanged="Scene_Changed"
+                  Margin="0,0,0,4" />
+        <TextBlock x:Name="SceneHint"
+                   Text="Set only the primary display, or apply a saved scene with mode, position, orientation, and HDR."
+                   FontSize="10.5" TextWrapping="Wrap"
+                   Foreground="{StaticResource TextMutedBrush}"
+                   Margin="0,0,0,10" />
+
+        <TextBlock Text="Target primary monitor"
                    FontSize="11" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4" />
         <ComboBox x:Name="TargetMonitorCombo"
                   Style="{StaticResource DarkComboBox}"
                   DisplayMemberPath="Label"
+                  AutomationProperties.Name="Target primary monitor"
                   Margin="0,0,0,12" />
 
         <Grid Margin="0,0,0,4">
@@ -78,18 +140,23 @@
             <TextBlock Text="Conflict priority"
                        VerticalAlignment="Center"
                        FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
-            <TextBox x:Name="PriorityBox" Grid.Column="1"
-                     Style="{StaticResource DarkTextBox}"
-                     Text="0" />
+            <ComboBox x:Name="PriorityCombo" Grid.Column="1"
+                      Style="{StaticResource DarkComboBox}"
+                      AutomationProperties.Name="Profile conflict priority">
+                <ComboBoxItem Content="Low" Tag="-10" />
+                <ComboBoxItem Content="Normal" Tag="0" />
+                <ComboBoxItem Content="High" Tag="10" />
+                <ComboBoxItem Content="Critical" Tag="100" />
+            </ComboBox>
         </Grid>
-        <TextBlock Text="Higher values win when multiple profiles match. Range: -1000 to 1000."
+        <TextBlock Text="Higher-priority profiles win when multiple apps match. Most profiles should stay Normal."
                    FontSize="10.5" TextWrapping="Wrap"
                    Foreground="{StaticResource TextMutedBrush}"
                    Margin="0,0,0,12" />
 
         <CheckBox x:Name="RestoreOnExitCheck"
                   Style="{StaticResource DarkCheckBox}"
-                  Content="Restore previous primary when the app exits"
+                  Content="Restore the previous display scene when the app exits"
                   IsChecked="True"
                   Margin="0,0,0,8" />
 
@@ -105,11 +172,13 @@
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Test profile" Style="{StaticResource MiniButton}"
-                    Width="100" Margin="0,0,8,0" Click="TestProfile_Click" />
+                    Width="100" Margin="0,0,8,0"
+                    AutomationProperties.Name="Test this profile"
+                    Click="TestProfile_Click" />
             <Button Content="Cancel" Style="{StaticResource MiniButton}"
-                    Width="92" Click="Cancel_Click" />
+                    Width="92" IsCancel="True" Click="Cancel_Click" />
             <Button x:Name="SaveProfileButton" Content="Save" Style="{StaticResource AccentMiniButton}"
-                    Width="92" Margin="8,0,0,0" Click="Save_Click" />
+                    Width="92" Margin="8,0,0,0" IsDefault="True" Click="Save_Click" />
         </StackPanel>
     </StackPanel>
 </UserControl>

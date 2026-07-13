@@ -314,6 +314,131 @@ public sealed class DisplayManager
         }
     }
 
+    /// <summary>Reads the scene properties that Windows exposes through DEVMODE plus HDR.</summary>
+    public DisplaySceneMonitorState? GetCurrentSceneState(string deviceName)
+    {
+        var devMode = CreateDevMode();
+        if (!EnumDisplaySettings(deviceName, EnumCurrentSettings, ref devMode))
+        {
+            return null;
+        }
+
+        var hdr = GetHdrStatus(deviceName);
+        return new DisplaySceneMonitorState
+        {
+            Width = (int)devMode.dmPelsWidth,
+            Height = (int)devMode.dmPelsHeight,
+            RefreshRateHz = (int)devMode.dmDisplayFrequency,
+            PositionX = devMode.dmPositionX,
+            PositionY = devMode.dmPositionY,
+            Orientation = devMode.dmDisplayOrientation,
+            HdrEnabled = hdr?.Supported == true ? hdr.Enabled : null,
+        };
+    }
+
+    /// <summary>
+    /// Preflights every monitor in a scene without committing a change.
+    /// Missing monitors and invalid orientation values fail the complete scene.
+    /// </summary>
+    public void TestDisplayScene(
+        IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
+        string primaryDeviceName)
+    {
+        ArgumentNullException.ThrowIfNull(states);
+        if (states.Count == 0)
+        {
+            throw new InvalidOperationException("Scene has no monitor state saved.");
+        }
+
+        var connected = GetMonitors()
+            .Select(m => m.DeviceName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!connected.Contains(primaryDeviceName))
+        {
+            throw new InvalidOperationException($"Scene primary display '{primaryDeviceName}' is not connected.");
+        }
+
+        foreach (var (deviceName, state) in states)
+        {
+            if (!connected.Contains(deviceName))
+            {
+                throw new InvalidOperationException($"Scene display '{deviceName}' is not connected.");
+            }
+
+            if (state.Orientation > 3)
+            {
+                throw new InvalidOperationException($"Scene has an invalid orientation for {deviceName}.");
+            }
+
+            var devMode = BuildSceneDevMode(deviceName, state);
+            var test = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CdsTest, IntPtr.Zero);
+            if (test != DispChangeSuccessful)
+            {
+                throw new InvalidOperationException(
+                    $"Scene settings are not supported on {deviceName} — {DescribeDispChange(test)}.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies all resolution, refresh, position, orientation, and primary
+    /// changes as one staged desktop transaction. Call TestDisplayScene first.
+    /// </summary>
+    public void ApplyDisplaySceneConfiguration(
+        IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
+        string primaryDeviceName)
+    {
+        TestDisplayScene(states, primaryDeviceName);
+
+        foreach (var (deviceName, state) in states)
+        {
+            var devMode = BuildSceneDevMode(deviceName, state);
+            var flags = CdsUpdateRegistry | CdsNoReset;
+            if (string.Equals(deviceName, primaryDeviceName, StringComparison.OrdinalIgnoreCase))
+            {
+                flags |= CdsSetPrimary;
+            }
+
+            var staged = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, flags, IntPtr.Zero);
+            if (staged != DispChangeSuccessful)
+            {
+                throw new InvalidOperationException(
+                    $"Could not stage scene settings for {deviceName} — {DescribeDispChange(staged)}.");
+            }
+        }
+
+        var applied = ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+        if (applied != DispChangeSuccessful)
+        {
+            throw new InvalidOperationException($"Could not commit the display scene — {DescribeDispChange(applied)}.");
+        }
+
+        AppLogger.Log($"Display scene configuration committed ({states.Count} monitor(s), primary {primaryDeviceName}).");
+    }
+
+    private static DEVMODE BuildSceneDevMode(string deviceName, DisplaySceneMonitorState state)
+    {
+        var devMode = CreateDevMode();
+        if (!EnumDisplaySettings(deviceName, EnumCurrentSettings, ref devMode))
+        {
+            throw new InvalidOperationException($"Could not read current settings for {deviceName}.");
+        }
+
+        devMode.dmPelsWidth = (uint)state.Width;
+        devMode.dmPelsHeight = (uint)state.Height;
+        devMode.dmPositionX = state.PositionX;
+        devMode.dmPositionY = state.PositionY;
+        devMode.dmDisplayOrientation = state.Orientation;
+        devMode.dmFields = DmPelsWidth | DmPelsHeight | DmPosition | DmDisplayOrientation;
+        if (state.RefreshRateHz > 0)
+        {
+            devMode.dmDisplayFrequency = (uint)state.RefreshRateHz;
+            devMode.dmFields |= DmDisplayFrequency;
+        }
+
+        return devMode;
+    }
+
     /// <summary>
     /// Applies a resolution + refresh-rate change to one monitor. Validates with
     /// CDS_TEST first, then commits with CDS_UPDATEREGISTRY. Throws with a

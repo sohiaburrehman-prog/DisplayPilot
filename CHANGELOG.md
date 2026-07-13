@@ -2,6 +2,35 @@
 
 All notable changes to DisplayPilot are documented here.
 
+## [Unreleased]
+
+### Added
+- **Transactional display scenes** — capture primary display, resolution, refresh, desktop position, rotation, and HDR for every active monitor; preflight exact changes before applying and automatically roll back the complete scene when any step fails
+- **Scene preview and scripting** — preview scenes in the profile manager or with `--preview-scene`; `--list-scenes`, `--apply-scene`, and `--dry-run` provide JSON-compatible automation while the old preset commands remain aliases
+- **Richer profile matching** — optionally constrain a profile to an exact executable path and/or a case-insensitive main-window-title substring
+- **Profile diagnostics** — “Explain current state” and `--explain-profiles` show why every profile matched or failed, which conflict rank it holds, why the winner controls the display, and which profile will take over next
+- **Scene safety confirmation** — interactive scene changes show a 15-second “Keep these changes?” countdown and restore the prior complete display state on timeout or explicit revert
+- **Scene-aware profiles** — profiles can apply saved scenes, stack by the existing conflict policy, and restore the complete pre-automation scene after the stack exits
+- **Complete scene CLI** — capture, rename, delete, export, and import individual scenes; use `--temporary <seconds>` to apply a scene and restore automatically
+
+### Changed
+- Settings schema upgraded to v7. Existing mode-only layout presets remain importable and apply without changing their live position, rotation, or HDR state
+- Process polling only reads executable paths and window titles for profiles that use advanced constraints; full process inspection occurs on demand for diagnostics
+
+## [1.7.16] — 2026-07-12
+
+### Changed
+- **Settings redesign** — reorganized the window into General, Shortcuts, Automation, and Data & support tabs; added Windows startup control and height clamping for smaller work areas
+- **Profile manager clarity** — named priority levels replace unexplained numeric input, and simultaneously matched profiles now distinguish the controlling winner from profiles waiting underneath it
+- **Display preset reliability** — preset capture/apply operations run without freezing the window, block accidental double execution, and describe their resolution/refresh scope accurately
+- **Keyboard and accessibility polish** — added dialog ownership, default/cancel actions, visible keyboard focus, automation labels, and live status announcements across settings, profiles, and monitor controls
+
+### Fixed
+- Hotkey changes are validated before saving, conflicting or unavailable bindings show directly in Settings, and failed registrations roll back cleanly
+- Profile search no longer performs an expensive monitor enumeration on every keystroke
+- Manual update checks no longer open the browser automatically, and failed checks no longer suppress the next scheduled retry
+- Settings and profile windows now remain usable on shorter displays instead of expanding beyond the work area
+
 ## [1.7.15] — 2026-07-10
 
 ### Added

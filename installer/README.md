@@ -10,6 +10,21 @@ Windows installer for DisplayPilot, built with [Inno Setup 6](https://jrsoftware
 
 ## Build the app
 
+### One-command build
+
+From the repository root, run:
+
+```cmd
+build-installer.cmd
+```
+
+The script cleans the framework-dependent publish folder, publishes the Release
+build, locates Inno Setup 6, and creates
+`installer\output\DisplayPilot-Setup.exe`. If Inno Setup is installed in a
+custom location, set `ISCC_EXE` to the full path of `ISCC.exe` first.
+
+### Manual build
+
 From the repo root (`DisplayPilot/`):
 
 ```powershell

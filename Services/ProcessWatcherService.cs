@@ -40,8 +40,10 @@ public sealed class ProcessWatcherService : IDisposable
     private volatile bool _forceReconcile;
     private long _nextActivationOrder;
     private ActiveProfileState? _currentActiveProfile;
+    private HashSet<string> _matchedProfileIds = new(StringComparer.Ordinal);
 
     private string? _sessionBaselinePrimaryDevice;
+    private LayoutPreset? _sessionBaselineScene;
     private AppProfile? _winnerSnapshot;
     private string? _winnerDetectedLauncherChild;
 
@@ -58,6 +60,18 @@ public sealed class ProcessWatcherService : IDisposable
             lock (_lock)
             {
                 return _currentActiveProfile;
+            }
+        }
+    }
+
+    /// <summary>IDs of every profile currently matched, including the winner.</summary>
+    public IReadOnlySet<string> CurrentMatchedProfileIds
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return new HashSet<string>(_matchedProfileIds, StringComparer.Ordinal);
             }
         }
     }
@@ -225,7 +239,21 @@ public sealed class ProcessWatcherService : IDisposable
                 .Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.ProcessName))
                 .Select(p => p.Clone())
                 .ToList();
-            var currentProcesses = GetRunningProcesses();
+            var profilesNeedDetails = profiles.Any(p =>
+                !string.IsNullOrWhiteSpace(p.ExecutablePath) ||
+                !string.IsNullOrWhiteSpace(p.WindowTitleContains));
+            var detailAllProcesses = profiles.Any(p =>
+                (!string.IsNullOrWhiteSpace(p.ExecutablePath) || !string.IsNullOrWhiteSpace(p.WindowTitleContains)) &&
+                LauncherCatalog.IsKnownLauncher(p.ProcessName) &&
+                !p.HasResolvedTarget);
+            var detailProcessNames = profiles
+                .Where(p => !string.IsNullOrWhiteSpace(p.ExecutablePath) || !string.IsNullOrWhiteSpace(p.WindowTitleContains))
+                .SelectMany(p => new[] { p.NormalizedProcessName, p.NormalizedResolvedTarget })
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var currentProcesses = GetRunningProcesses(
+                profilesNeedDetails,
+                detailAllProcesses ? null : detailProcessNames);
             var runningNames = currentProcesses
                 .Select(p => p.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -257,7 +285,11 @@ public sealed class ProcessWatcherService : IDisposable
                     _launcherWatch.Remove(profile.Id);
                 }
 
-                var isRunning = ProfileMatcher.IsProfileActive(profile, runningNames, detectedChild);
+                var isRunning = ProfileMatcher.IsProfileActive(
+                    profile,
+                    runningNames,
+                    detectedChild,
+                    currentProcesses);
                 var wasRunning = _runningState.TryGetValue(profile.Id, out var previous) && previous;
                 _runningState[profile.Id] = isRunning;
 
@@ -280,6 +312,7 @@ public sealed class ProcessWatcherService : IDisposable
             }
 
             ReconcileWinner(candidates, settings.ProfileConflictRule);
+            SetMatchedProfileIds(candidates.Select(c => c.Profile.Id));
 
             var liveIds = profiles.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
             foreach (var staleId in _runningState.Keys.Where(k => !liveIds.Contains(k)).ToList())
@@ -314,6 +347,10 @@ public sealed class ProcessWatcherService : IDisposable
             _winnerSnapshot is not null &&
             preferred.Profile.Id == _winnerSnapshot.Id &&
             string.Equals(
+                preferred.Profile.DisplaySceneId,
+                _winnerSnapshot.DisplaySceneId,
+                StringComparison.Ordinal) &&
+            string.Equals(
                 preferred.Profile.TargetMonitorDeviceName,
                 _winnerSnapshot.TargetMonitorDeviceName,
                 StringComparison.OrdinalIgnoreCase))
@@ -336,7 +373,37 @@ public sealed class ProcessWatcherService : IDisposable
         MonitorInfo? target = null;
         foreach (var candidate in ordered)
         {
-            target = ProfileMatcher.ResolveTarget(candidate.Profile, monitors);
+            if (!string.IsNullOrWhiteSpace(candidate.Profile.DisplaySceneId))
+            {
+                var scene = _settings.Current.LayoutPresets.FirstOrDefault(s =>
+                    string.Equals(s.Id, candidate.Profile.DisplaySceneId, StringComparison.Ordinal));
+                if (scene is null)
+                {
+                    AppLogger.Log(
+                        $"Profile conflict candidate skipped [{candidate.Profile.DisplayLabel}]: " +
+                        $"scene '{candidate.Profile.DisplaySceneId}' no longer exists.");
+                    continue;
+                }
+
+                var preview = LayoutPresetService.Preview(scene, _settings.Current, _displayManager);
+                if (!preview.Valid)
+                {
+                    AppLogger.Log(
+                        $"Profile conflict candidate skipped [{candidate.Profile.DisplayLabel}]: " +
+                        preview.Message);
+                    continue;
+                }
+
+                target = monitors.FirstOrDefault(m => string.Equals(
+                    m.DeviceName,
+                    scene.PrimaryMonitorDeviceName,
+                    StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                target = ProfileMatcher.ResolveTarget(candidate.Profile, monitors);
+            }
+
             if (target is not null)
             {
                 winner = candidate;
@@ -357,14 +424,55 @@ public sealed class ProcessWatcherService : IDisposable
         if (_winnerSnapshot is null)
         {
             _sessionBaselinePrimaryDevice = monitors.FirstOrDefault(m => m.IsPrimary)?.DeviceName;
+            try
+            {
+                _sessionBaselineScene = LayoutPresetService.CaptureCurrent(
+                    "Automation baseline",
+                    _displayManager);
+            }
+            catch (Exception ex)
+            {
+                _sessionBaselineScene = null;
+                AppLogger.LogException("ProcessWatcher.CaptureBaselineScene", ex);
+            }
             AppLogger.Log($"Auto-swap session baseline: {_sessionBaselinePrimaryDevice ?? "unknown"}.");
         }
 
         var previousWinner = _winnerSnapshot;
+        var previousDetectedLauncherChild = _winnerDetectedLauncherChild;
         _winnerSnapshot = winner.Profile.Clone();
         _winnerDetectedLauncherChild = winner.DetectedLauncherChild;
 
-        if (!target.IsPrimary)
+        if (!string.IsNullOrWhiteSpace(winner.Profile.DisplaySceneId))
+        {
+            var scene = _settings.Current.LayoutPresets.First(s =>
+                string.Equals(s.Id, winner.Profile.DisplaySceneId, StringComparison.Ordinal));
+            var result = LayoutPresetService.TryApply(scene, _settings.Current, _displayManager);
+            if (!result.Applied)
+            {
+                _winnerSnapshot = previousWinner;
+                _winnerDetectedLauncherChild = previousDetectedLauncherChild;
+                AppLogger.Log($"Profile scene apply failed [{winner.Profile.DisplayLabel}]: {result.Message}");
+                StatusMessage?.Invoke(this, $"Auto-swap failed: {result.Message}");
+                return;
+            }
+
+            monitors = _displayManager.GetMonitors();
+            target = monitors.FirstOrDefault(m => string.Equals(
+                m.DeviceName,
+                scene.PrimaryMonitorDeviceName,
+                StringComparison.OrdinalIgnoreCase)) ?? target;
+            RecordProfileTriggered(winner.Profile);
+            AppLogger.Log(
+                $"Profile winner [{winner.Profile.DisplayLabel}, priority {winner.Profile.Priority}]: " +
+                $"scene '{scene.Name}' applied.");
+            StatusMessage?.Invoke(this,
+                previousWinner is null
+                    ? $"Auto-swap: scene {scene.Name} applied."
+                    : $"Auto-swap: {winner.Profile.DisplayLabel} won; scene {scene.Name} applied.");
+            PrimaryChanged?.Invoke(this, EventArgs.Empty);
+        }
+        else if (!target.IsPrimary)
         {
             _displayManager.SetPrimaryByDeviceName(target.DeviceName);
             var displayName = MonitorDisplayHelper.GetDisplayName(target, _settings.Current);
@@ -403,16 +511,45 @@ public sealed class ProcessWatcherService : IDisposable
 
         var departedWinner = _winnerSnapshot;
         var baselineDevice = _sessionBaselinePrimaryDevice;
+        var baselineScene = _sessionBaselineScene;
 
         _winnerSnapshot = null;
         _winnerDetectedLauncherChild = null;
         _sessionBaselinePrimaryDevice = null;
+        _sessionBaselineScene = null;
         SetCurrentActiveProfile(null);
 
-        if (!departedWinner.RestoreOnExit || string.IsNullOrWhiteSpace(baselineDevice))
+        if (!departedWinner.RestoreOnExit)
         {
             AppLogger.Log(
                 $"Auto-swap session ended [{departedWinner.DisplayLabel}]; restore disabled or no baseline saved.");
+            return;
+        }
+
+        if (baselineScene is not null)
+        {
+            var restore = LayoutPresetService.TryRestore(
+                baselineScene,
+                _settings.Current,
+                _displayManager);
+            if (restore.Applied)
+            {
+                AppLogger.Log("Auto-swap session ended; restored the full baseline display scene.");
+                StatusMessage?.Invoke(this, "Auto-swap: restored the previous display scene.");
+                PrimaryChanged?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                AppLogger.Log($"Auto-swap scene restore failed: {restore.Message}");
+                StatusMessage?.Invoke(this, $"Auto-swap restore failed: {restore.Message}");
+            }
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(baselineDevice))
+        {
+            AppLogger.Log("Auto-swap restore skipped: no baseline display scene or primary was saved.");
             return;
         }
 
@@ -465,13 +602,31 @@ public sealed class ProcessWatcherService : IDisposable
         ActiveProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    private void SetMatchedProfileIds(IEnumerable<string> profileIds)
+    {
+        var next = profileIds.ToHashSet(StringComparer.Ordinal);
+        lock (_lock)
+        {
+            if (_matchedProfileIds.SetEquals(next))
+            {
+                return;
+            }
+
+            _matchedProfileIds = next;
+        }
+
+        ActiveProfileChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private void TrimRecentProcessStarts_NoLock()
     {
         var cutoff = DateTime.UtcNow - ProcessStartRetention;
         _recentProcessStarts.RemoveAll(p => p.SeenUtc < cutoff);
     }
 
-    public static IReadOnlyList<LauncherChildTracker.RunningProcess> GetRunningProcesses()
+    public static IReadOnlyList<LauncherChildTracker.RunningProcess> GetRunningProcesses(
+        bool includeDetails = false,
+        ISet<string>? detailProcessNames = null)
     {
         var processes = Process.GetProcesses();
         var results = new List<LauncherChildTracker.RunningProcess>(processes.Length);
@@ -479,9 +634,35 @@ public sealed class ProcessWatcherService : IDisposable
         {
             try
             {
+                var normalizedName = LauncherCatalog.Normalize(process.ProcessName);
+                string? executablePath = null;
+                string? windowTitle = null;
+                if (includeDetails && (detailProcessNames is null || detailProcessNames.Contains(normalizedName)))
+                {
+                    try
+                    {
+                        executablePath = process.MainModule?.FileName;
+                    }
+                    catch
+                    {
+                        // Protected/elevated processes may not expose their path.
+                    }
+
+                    try
+                    {
+                        windowTitle = process.MainWindowTitle;
+                    }
+                    catch
+                    {
+                        // Process exited or does not expose a main window.
+                    }
+                }
+
                 results.Add(new LauncherChildTracker.RunningProcess(
                     (uint)process.Id,
-                    LauncherCatalog.Normalize(process.ProcessName)));
+                    normalizedName,
+                    executablePath,
+                    windowTitle));
             }
             catch
             {

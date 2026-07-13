@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 using PrimaryDisplaySwap.Controls;
 using PrimaryDisplaySwap.Models;
@@ -19,7 +20,10 @@ public partial class ProfilesWindow : Window
     private readonly SettingsService _settings;
     private readonly ProcessWatcherService? _processWatcher;
     private readonly ProfileEditorControl _profileEditor;
+    private readonly DispatcherTimer _searchDebounce;
+    private IReadOnlyList<MonitorInfo> _cachedMonitors = Array.Empty<MonitorInfo>();
     private bool _loadingConflictRule;
+    private bool _presetOperationInProgress;
 
     public ProfilesWindow(
         DisplayManager displayManager,
@@ -33,7 +37,14 @@ public partial class ProfilesWindow : Window
         InitializeComponent();
 
         _profileEditor = new ProfileEditorControl(_displayManager, _settings);
-        ProfileEditorPanel.Child = _profileEditor;
+        ProfileEditorScroll.Content = _profileEditor;
+
+        _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
+        _searchDebounce.Tick += (_, _) =>
+        {
+            _searchDebounce.Stop();
+            RebuildProfileList();
+        };
 
         _profileEditor.Saved += (_, _) => OnEditorClosed();
         _profileEditor.Cancelled += (_, _) => OnEditorClosed();
@@ -44,9 +55,20 @@ public partial class ProfilesWindow : Window
             _processWatcher.ActiveProfileChanged += ProcessWatcher_ActiveProfileChanged;
         }
 
+        ContentRendered += (_, _) => ClampToWorkArea();
+
+        RefreshMonitorCache();
         LoadConflictRule();
         RebuildProfileList();
         RebuildPresetList();
+    }
+
+    private void ClampToWorkArea()
+    {
+        var maximum = Math.Max(420, SystemParameters.WorkArea.Height - 32);
+        MinHeight = Math.Min(MinHeight, maximum);
+        MaxHeight = maximum;
+        Height = Math.Min(Height, maximum);
     }
 
     private void ProcessWatcher_ActiveProfileChanged(object? sender, EventArgs e) =>
@@ -97,10 +119,37 @@ public partial class ProfilesWindow : Window
             return;
         }
 
+        RefreshMonitorCache();
         _profileEditor.RefreshMonitors();
         LoadConflictRule();
         RebuildProfileList();
         RebuildPresetList();
+    }
+
+    public void RefreshFromSettings()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(RefreshFromSettings);
+            return;
+        }
+
+        LoadConflictRule();
+        RebuildProfileList();
+        RebuildPresetList();
+    }
+
+    private void RefreshMonitorCache()
+    {
+        try
+        {
+            _cachedMonitors = _displayManager.GetMonitors();
+        }
+        catch (Exception ex)
+        {
+            _cachedMonitors = Array.Empty<MonitorInfo>();
+            AppLogger.Log($"Profile manager could not refresh monitors: {ex.Message}");
+        }
     }
 
     private void ShowEditor(Action begin)
@@ -146,24 +195,18 @@ public partial class ProfilesWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-        IReadOnlyList<MonitorInfo> monitors;
-        try
-        {
-            monitors = _displayManager.GetMonitors();
-        }
-        catch
-        {
-            monitors = Array.Empty<MonitorInfo>();
-        }
+        var matchedIds = _processWatcher?.CurrentMatchedProfileIds
+            ?? new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var profile in filtered)
         {
             ProfileListPanel.Children.Add(ProfileUiHelper.BuildProfileRow(
                 profile,
-                monitors,
+                _cachedMonitors,
                 _settings.Current,
                 this,
-                isActiveNow: profile.Id == activeId,
+                isWinnerNow: profile.Id == activeId,
+                isMatchedNow: matchedIds.Contains(profile.Id),
                 SetProfileEnabled,
                 BeginEditProfile,
                 DuplicateProfile,
@@ -185,6 +228,8 @@ public partial class ProfilesWindow : Window
         return profile.DisplayLabel.Contains(filter, StringComparison.OrdinalIgnoreCase)
             || profile.ProcessName.Contains(filter, StringComparison.OrdinalIgnoreCase)
             || profile.ResolvedTargetProcessName.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || profile.ExecutablePath.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || profile.WindowTitleContains.Contains(filter, StringComparison.OrdinalIgnoreCase)
             || profile.TargetMonitorName.Contains(filter, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -194,19 +239,9 @@ public partial class ProfilesWindow : Window
         var presets = _settings.Current.LayoutPresets;
         NoPresetsText.Visibility = presets.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        IReadOnlyList<MonitorInfo> monitors;
-        try
-        {
-            monitors = _displayManager.GetMonitors();
-        }
-        catch
-        {
-            monitors = Array.Empty<MonitorInfo>();
-        }
-
         foreach (var preset in presets)
         {
-            PresetListPanel.Children.Add(BuildPresetRow(preset, monitors));
+            PresetListPanel.Children.Add(BuildPresetRow(preset, _cachedMonitors));
         }
     }
 
@@ -227,6 +262,7 @@ public partial class ProfilesWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var primary = monitors.FirstOrDefault(m =>
             string.Equals(m.DeviceName, preset.PrimaryMonitorDeviceName, StringComparison.OrdinalIgnoreCase));
@@ -244,7 +280,9 @@ public partial class ProfilesWindow : Window
         });
         info.Children.Add(new TextBlock
         {
-            Text = $"Primary: {primaryLabel}  ·  {preset.MonitorModes.Count} monitor mode(s) saved",
+            Text = preset.IsFullScene
+                ? $"Primary: {primaryLabel}  ·  {preset.MonitorStates.Count} complete monitor state(s)"
+                : $"Primary: {primaryLabel}  ·  legacy scene ({preset.MonitorModes.Count} mode(s))",
             FontSize = 11,
             Foreground = (Brush)FindResource("TextMutedBrush"),
             Margin = new Thickness(0, 2, 0, 0),
@@ -264,6 +302,18 @@ public partial class ProfilesWindow : Window
         Grid.SetColumn(applyButton, 1);
         grid.Children.Add(applyButton);
 
+        var previewButton = new Button
+        {
+            Style = (Style)FindResource("MiniButton"),
+            Content = "Preview",
+            Width = 72,
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        previewButton.Click += (_, _) => PreviewPreset(preset);
+        Grid.SetColumn(previewButton, 2);
+        grid.Children.Add(previewButton);
+
         var renameButton = new Button
         {
             Style = (Style)FindResource("MiniButton"),
@@ -273,7 +323,7 @@ public partial class ProfilesWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
         renameButton.Click += (_, _) => RenamePreset(preset);
-        Grid.SetColumn(renameButton, 2);
+        Grid.SetColumn(renameButton, 3);
         grid.Children.Add(renameButton);
 
         var deleteButton = new Button
@@ -284,35 +334,100 @@ public partial class ProfilesWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
         deleteButton.Click += (_, _) => DeletePreset(preset);
-        Grid.SetColumn(deleteButton, 3);
+        Grid.SetColumn(deleteButton, 4);
         grid.Children.Add(deleteButton);
 
         border.Child = grid;
         return border;
     }
 
-    private void ApplyPreset(LayoutPreset preset)
+    private async void ApplyPreset(LayoutPreset preset)
     {
-        _ = Task.Run(() =>
+        if (_presetOperationInProgress)
         {
-            var result = LayoutPresetService.TryApply(preset, _settings.Current, _displayManager);
-            Dispatcher.BeginInvoke(() =>
+            return;
+        }
+
+        SetPresetBusy(true, $"Applying \"{preset.Name}\"…");
+        try
+        {
+            var result = await Task.Run(() =>
+                LayoutPresetService.TryApply(preset, _settings.Current, _displayManager));
+            if (result.Applied)
             {
-                if (result.Applied)
+                if (result.Changes.Count > 0 && result.RollbackScene is not null &&
+                    !SceneConfirmationWindow.Confirm(this, preset.Name))
                 {
-                    SetStatus(result.Message);
+                    SetStatus("Restoring the previous display scene…");
+                    var restore = await Task.Run(() => LayoutPresetService.TryRestore(
+                        result.RollbackScene,
+                        _settings.Current,
+                        _displayManager));
+                    SetStatus(restore.Applied
+                        ? "Previous display scene restored."
+                        : $"Could not restore the previous scene: {restore.Message}");
                 }
                 else
                 {
-                    MessageBox.Show(result.Message, "Could not apply preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    SetStatus(result.Message);
                 }
-            });
-        });
+                RefreshMonitorCache();
+                RebuildPresetList();
+            }
+            else
+            {
+                MessageBox.Show(result.Message, "Could not apply scene", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        finally
+        {
+            SetPresetBusy(false);
+        }
+    }
+
+    private async void PreviewPreset(LayoutPreset preset)
+    {
+        if (_presetOperationInProgress)
+        {
+            return;
+        }
+
+        SetPresetBusy(true, $"Preflighting \"{preset.Name}\"…");
+        try
+        {
+            var result = await Task.Run(() =>
+                LayoutPresetService.Preview(preset, _settings.Current, _displayManager));
+            var details = result.Changes.Count == 0
+                ? result.Message
+                : result.Message + "\n\n" + string.Join("\n", result.Changes.Select(change => "• " + change));
+            MessageBox.Show(
+                details,
+                result.Valid ? "Display scene preview" : "Scene cannot be applied",
+                MessageBoxButton.OK,
+                result.Valid ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            SetStatus(result.Message);
+        }
+        finally
+        {
+            SetPresetBusy(false);
+        }
+    }
+
+    private void SetPresetBusy(bool busy, string? status = null)
+    {
+        _presetOperationInProgress = busy;
+        PresetListPanel.IsEnabled = !busy;
+        SavePresetButton.IsEnabled = !busy;
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            SetStatus(status);
+        }
     }
 
     private void RenamePreset(LayoutPreset preset)
     {
-        var dialog = new RenameMonitorDialog(preset.Name, "Rename layout preset", "Preset name:");
+        var dialog = new RenameMonitorDialog(preset.Name, "Rename display scene", "Scene name:");
+        dialog.Owner = this;
         if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.MonitorName))
         {
             return;
@@ -327,14 +442,14 @@ public partial class ProfilesWindow : Window
             }
         });
         RebuildPresetList();
-        SetStatus("Preset renamed.");
+        SetStatus("Scene renamed.");
     }
 
     private void DeletePreset(LayoutPreset preset)
     {
         var confirm = MessageBox.Show(
-            $"Delete layout preset \"{preset.Name}\"?",
-            "Delete preset",
+            $"Delete display scene \"{preset.Name}\"?",
+            "Delete scene",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
@@ -345,28 +460,39 @@ public partial class ProfilesWindow : Window
 
         _settings.Update(s => s.LayoutPresets.RemoveAll(p => p.Id == preset.Id));
         RebuildPresetList();
-        SetStatus("Preset deleted.");
+        SetStatus("Scene deleted.");
     }
 
-    private void SavePreset_Click(object sender, RoutedEventArgs e)
+    private async void SavePreset_Click(object sender, RoutedEventArgs e)
     {
-        var name = NewPresetNameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name))
+        if (_presetOperationInProgress)
         {
-            SetStatus("Enter a name for the preset.");
             return;
         }
 
+        var name = NewPresetNameBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            SetStatus("Enter a name for the scene.");
+            return;
+        }
+
+        SetPresetBusy(true, "Capturing the current display scene…");
         try
         {
-            var preset = LayoutPresetService.CaptureCurrent(name, _displayManager);
+            var preset = await Task.Run(() => LayoutPresetService.CaptureCurrent(name, _displayManager));
             _settings.Update(s => s.LayoutPresets.Add(preset));
+            RefreshMonitorCache();
             RebuildPresetList();
-            SetStatus($"Saved preset \"{name}\".");
+            SetStatus($"Captured scene \"{name}\".");
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Could not save preset", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(ex.Message, "Could not capture scene", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            SetPresetBusy(false);
         }
     }
 
@@ -374,7 +500,8 @@ public partial class ProfilesWindow : Window
     {
         var editing = _profileEditor.IsEditing;
         ListHintText.Visibility = editing ? Visibility.Collapsed : Visibility.Visible;
-        SearchBox.Visibility = editing ? Visibility.Collapsed : Visibility.Visible;
+        ConflictRulePanel.Visibility = editing ? Visibility.Collapsed : Visibility.Visible;
+        SearchPanel.Visibility = editing ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void SetProfileEnabled(string id, bool enabled)
@@ -464,9 +591,80 @@ public partial class ProfilesWindow : Window
         RebuildProfileList();
     }
 
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => RebuildProfileList();
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        SearchPlaceholder.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
+    }
 
     private void AddProfile_Click(object sender, RoutedEventArgs e) => BeginAddProfile();
+
+    private void ShowDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var processes = ProcessWatcherService.GetRunningProcesses(includeDetails: true);
+            var snapshot = ProfileDiagnosticsService.Capture(
+                _settings.Current,
+                _cachedMonitors,
+                processes,
+                _processWatcher?.CurrentActiveProfile?.ProfileId,
+                _processWatcher?.CurrentMatchedProfileIds);
+
+            var dialog = new Window
+            {
+                Title = "DisplayPilot — Profile diagnostics",
+                Owner = this,
+                Width = 720,
+                Height = 600,
+                MinWidth = 520,
+                MinHeight = 360,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = (Brush)FindResource("FlyoutOpaqueBrush"),
+                FontFamily = (System.Windows.Media.FontFamily)FindResource("UiFont"),
+            };
+            var grid = new Grid { Margin = new Thickness(16) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var report = new TextBox
+            {
+                Text = ProfileDiagnosticsService.FormatReport(snapshot),
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = true,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Background = (Brush)FindResource("CardBrush"),
+                Foreground = (Brush)FindResource("TextPrimaryBrush"),
+                BorderBrush = (Brush)FindResource("HairlineBrush"),
+                Padding = new Thickness(12),
+                FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                FontSize = 12,
+            };
+            grid.Children.Add(report);
+            var close = new Button
+            {
+                Content = "Close",
+                Style = (Style)FindResource("AccentMiniButton"),
+                Width = 110,
+                Margin = new Thickness(0, 12, 0, 0),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+                IsCancel = true,
+            };
+            close.Click += (_, _) => dialog.Close();
+            Grid.SetRow(close, 1);
+            grid.Children.Add(close);
+            dialog.Content = grid;
+            dialog.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Could not explain profiles", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
 
     private void SetStatus(string message) => StatusText.Text = message;
 
@@ -474,6 +672,7 @@ public partial class ProfilesWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _searchDebounce.Stop();
         if (_processWatcher is not null)
         {
             _processWatcher.ActiveProfileChanged -= ProcessWatcher_ActiveProfileChanged;

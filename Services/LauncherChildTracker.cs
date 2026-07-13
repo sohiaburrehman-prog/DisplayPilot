@@ -9,7 +9,11 @@ namespace PrimaryDisplaySwap.Services;
 /// </summary>
 public static class LauncherChildTracker
 {
-    public sealed record RunningProcess(uint ProcessId, string Name);
+    public sealed record RunningProcess(
+        uint ProcessId,
+        string Name,
+        string? ExecutablePath = null,
+        string? WindowTitle = null);
 
     public sealed record ProcessStart(
         uint ProcessId,

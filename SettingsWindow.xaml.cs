@@ -10,7 +10,6 @@ using PrimaryDisplaySwap.Services;
 
 using Button = System.Windows.Controls.Button;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
-using Size = System.Windows.Size;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
@@ -22,20 +21,30 @@ public partial class SettingsWindow : Window
     private enum CaptureTarget { None, OpenPanel, Cycle }
 
     private readonly SettingsService _settings;
+    private readonly StartupService _startup;
     private readonly Action? _runWizard;
     private readonly Action? _openProfileManager;
+    private readonly Action? _openLog;
+    private readonly Func<HotkeyConfig, HotkeyConfig, HotkeyApplyResult>? _validateHotkeys;
 
     private CaptureTarget _capturing = CaptureTarget.None;
     private bool _suppressToggleEvents;
+    private UpdateInfo? _availableUpdate;
 
     public SettingsWindow(
         SettingsService settings,
+        StartupService startup,
         Action? runWizard = null,
-        Action? openProfileManager = null)
+        Action? openProfileManager = null,
+        Action? openLog = null,
+        Func<HotkeyConfig, HotkeyConfig, HotkeyApplyResult>? validateHotkeys = null)
     {
         _settings = settings;
+        _startup = startup;
         _runWizard = runWizard;
         _openProfileManager = openProfileManager;
+        _openLog = openLog;
+        _validateHotkeys = validateHotkeys;
 
         InitializeComponent();
 
@@ -48,53 +57,25 @@ public partial class SettingsWindow : Window
     private void OnContentRendered(object? sender, EventArgs e)
     {
         ContentRendered -= OnContentRendered;
-        FitHeightToContent();
-    }
-
-    /// <summary>
-    /// Expand to fit all sections at open so the ScrollViewer stays hidden at default
-    /// size (100%/150% DPI). Scrollbar appears only if the user resizes below MinHeight.
-    /// </summary>
-    private void FitHeightToContent()
-    {
-        const double scrollVerticalMargin = 20; // ScrollViewer Margin 12 + 8
-        const double layoutSlack = 4; // DPI rounding / scroll-bar gutter
-
-        var root = (Grid)Content;
-        root.UpdateLayout();
-        UpdateLayout();
-
-        // Window.Height is outer size (title bar + frame); inner rows were summed without chrome.
-        var chromeHeight = ActualHeight - root.ActualHeight;
-        if (chromeHeight < 1)
-        {
-            // Rare before first layout; typical Win11 title bar + frame ≈ 39–48 DIP.
-            chromeHeight = 48;
-        }
-
-        var contentWidth = Math.Max(0, ActualWidth - 32); // horizontal ScrollViewer margin 16×2
-        SettingsContent.Measure(new Size(contentWidth, double.PositiveInfinity));
-        SettingsContent.UpdateLayout();
-
-        var contentHeight = SettingsContent.ActualHeight > 0
-            ? SettingsContent.ActualHeight
-            : SettingsContent.DesiredSize.Height;
-
-        var innerNeeded = HeaderBorder.ActualHeight
-                          + FooterBorder.ActualHeight
-                          + scrollVerticalMargin
-                          + contentHeight;
-
-        var target = Math.Ceiling(innerNeeded + chromeHeight + layoutSlack);
-        if (Height < target)
-        {
-            Height = target;
-        }
+        var maximum = Math.Max(420, SystemParameters.WorkArea.Height - 32);
+        MinHeight = Math.Min(MinHeight, maximum);
+        MaxHeight = maximum;
+        Height = Math.Min(Height, maximum);
     }
 
     public void LoadFromSettings()
     {
         _suppressToggleEvents = true;
+
+        try
+        {
+            StartupCheck.IsChecked = _startup.IsEnabled;
+        }
+        catch (Exception ex)
+        {
+            StartupCheck.IsChecked = false;
+            AppLogger.Log($"Could not read startup setting: {ex.Message}");
+        }
 
         OpenPanelCapture.Content = HotkeyService.Describe(_settings.Current.OpenPanelHotkey);
         CycleEnabledCheck.IsChecked = _settings.Current.CyclePrimaryHotkey.Enabled;
@@ -104,6 +85,29 @@ public partial class SettingsWindow : Window
         ThemeCombo.SelectedIndex = (int)_settings.Current.Theme;
 
         _suppressToggleEvents = false;
+    }
+
+    private void Startup_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        var enabled = StartupCheck.IsChecked == true;
+        try
+        {
+            _startup.SetEnabled(enabled);
+            SetStatus(enabled ? "DisplayPilot will start with Windows." : "Windows startup disabled.");
+        }
+        catch (Exception ex)
+        {
+            _suppressToggleEvents = true;
+            StartupCheck.IsChecked = !enabled;
+            _suppressToggleEvents = false;
+            AppLogger.Log($"Could not change startup setting: {ex.Message}");
+            MessageBox.Show(ex.Message, "Could not change startup setting", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -191,7 +195,18 @@ public partial class SettingsWindow : Window
                 return;
             }
 
-            _settings.Update(s => s.OpenPanelHotkey = newHotkey);
+            if (!ValidateHotkeys(newHotkey, _settings.Current.CyclePrimaryHotkey))
+            {
+                return;
+            }
+
+            if (!_settings.Update(s => s.OpenPanelHotkey = newHotkey))
+            {
+                _validateHotkeys?.Invoke(
+                    _settings.Current.OpenPanelHotkey.Clone(),
+                    _settings.Current.CyclePrimaryHotkey.Clone());
+                return;
+            }
         }
         else if (_capturing == CaptureTarget.Cycle)
         {
@@ -202,11 +217,22 @@ public partial class SettingsWindow : Window
                 return;
             }
 
-            _settings.Update(s =>
+            if (!ValidateHotkeys(_settings.Current.OpenPanelHotkey, newHotkey))
+            {
+                return;
+            }
+
+            if (!_settings.Update(s =>
             {
                 s.CyclePrimaryHotkey = newHotkey;
                 s.CyclePrimaryHotkey.Enabled = true;
-            });
+            }))
+            {
+                _validateHotkeys?.Invoke(
+                    _settings.Current.OpenPanelHotkey.Clone(),
+                    _settings.Current.CyclePrimaryHotkey.Clone());
+                return;
+            }
             _suppressToggleEvents = true;
             CycleEnabledCheck.IsChecked = true;
             _suppressToggleEvents = false;
@@ -226,13 +252,57 @@ public partial class SettingsWindow : Window
         }
 
         var enabled = CycleEnabledCheck.IsChecked == true;
-        _settings.Update(s => s.CyclePrimaryHotkey.Enabled = enabled);
+        var candidate = _settings.Current.CyclePrimaryHotkey.Clone();
+        candidate.Enabled = enabled;
+        if (!ValidateHotkeys(_settings.Current.OpenPanelHotkey, candidate))
+        {
+            _suppressToggleEvents = true;
+            CycleEnabledCheck.IsChecked = !enabled;
+            _suppressToggleEvents = false;
+            return;
+        }
+
+        if (!_settings.Update(s => s.CyclePrimaryHotkey.Enabled = enabled))
+        {
+            _validateHotkeys?.Invoke(
+                _settings.Current.OpenPanelHotkey.Clone(),
+                _settings.Current.CyclePrimaryHotkey.Clone());
+            _suppressToggleEvents = true;
+            CycleEnabledCheck.IsChecked = !enabled;
+            _suppressToggleEvents = false;
+            return;
+        }
         CycleCapture.IsEnabled = enabled;
 
         if (enabled && !_settings.Current.CyclePrimaryHotkey.IsBound)
         {
             SetStatus("Now set a shortcut for Cycle primary display.");
         }
+    }
+
+    private bool ValidateHotkeys(HotkeyConfig openPanel, HotkeyConfig cycle)
+    {
+        if (_validateHotkeys is null)
+        {
+            return true;
+        }
+
+        var result = _validateHotkeys(openPanel.Clone(), cycle.Clone());
+        if (!result.HasFailure)
+        {
+            return true;
+        }
+
+        ShowHotkeyFailure(result.FailureMessage);
+        return false;
+    }
+
+    public void ShowHotkeyFailure(string message)
+    {
+        SettingsTabs.SelectedIndex = 1;
+        CaptureHint.Text = message;
+        CaptureHint.Visibility = Visibility.Visible;
+        SetStatus(message);
     }
 
     private static bool IsModifierKey(Key key) => key is
@@ -308,6 +378,16 @@ public partial class SettingsWindow : Window
                 MessageBox.Show(
                     error ?? "The selected file is not valid DisplayPilot settings.",
                     "Import failed",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!ValidateHotkeys(imported!.OpenPanelHotkey, imported.CyclePrimaryHotkey))
+            {
+                MessageBox.Show(
+                    "The imported shortcuts could not be registered. Your current settings were left unchanged.",
+                    "Import blocked",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 return;
@@ -393,26 +473,32 @@ public partial class SettingsWindow : Window
     private async void CheckNow_Click(object sender, RoutedEventArgs e)
     {
         CheckNowButton.IsEnabled = false;
+        OpenUpdateButton.Visibility = Visibility.Collapsed;
+        _availableUpdate = null;
         UpdateStatusText.Text = "Checking…";
 
         try
         {
             var service = new UpdateService();
             var info = await service.CheckForUpdateAsync();
-            _settings.Update(s => s.LastUpdateCheckUtc = DateTime.UtcNow);
 
             if (info is null)
             {
                 UpdateStatusText.Text = "Could not reach GitHub. Try again later.";
             }
-            else if (info.UpdateAvailable)
-            {
-                UpdateStatusText.Text = $"{info.LatestTag} is available — opening release…";
-                OpenUrl(info.ReleaseUrl);
-            }
             else
             {
-                UpdateStatusText.Text = $"You're up to date (v{AppInfo.AppVersion}).";
+                _settings.Update(s => s.LastUpdateCheckUtc = DateTime.UtcNow);
+                if (info.UpdateAvailable)
+                {
+                    _availableUpdate = info;
+                    UpdateStatusText.Text = $"{info.LatestTag} is available.";
+                    OpenUpdateButton.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    UpdateStatusText.Text = $"You're up to date (v{AppInfo.AppVersion}).";
+                }
             }
         }
         catch (Exception ex)
@@ -426,7 +512,17 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void OpenUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is not null)
+        {
+            OpenUrl(_availableUpdate.ReleaseUrl);
+        }
+    }
+
     private static void OpenUrl(string url) => UrlLaunchHelper.TryOpenWebUrl(url);
+
+    private void OpenLog_Click(object sender, RoutedEventArgs e) => _openLog?.Invoke();
 
     private void SetStatus(string message) => StatusText.Text = message;
 

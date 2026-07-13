@@ -482,22 +482,38 @@ Check(restored.Profiles[0].Priority == 25, "Profile priority survives JSON round
 Check(restored.ProfileConflictRule == ProfileConflictRule.MostRecentlyActivated,
     "Profile conflict rule survives JSON round-trip");
 
-// ─────────────────── Schema v5: priority/conflicts, layouts & last-used profile ───────────────────
-Console.WriteLine("\n== Schema v5: priorities, layout presets & last-used profile ==");
-Check(AppSettings.CurrentSchemaVersion == 5, "Current schema version is 5");
+// ─────────────────── Schema v7: scene profiles, constraints & migration ───────────────────
+Console.WriteLine("\n== Schema v7: scene profiles & richer profile matching ==");
+Check(AppSettings.CurrentSchemaVersion == 7, "Current schema version is 7");
 
 var v4Settings = new AppSettings { SchemaVersion = 3 };
 v4Settings.Profiles.Add(gameProfile.Clone());
 SettingsService.TryParseImport(JsonSerializer.Serialize(v4Settings), out var migrated, out _);
-Check(migrated?.SchemaVersion == 5, "Import normalizes schema to v5");
+Check(migrated?.SchemaVersion == 7, "Import normalizes schema to v7");
 Check(migrated?.LayoutPresets is not null && migrated.LayoutPresets.Count == 0, "LayoutPresets initialized on migrate");
 
 var preset = LayoutPresetService.CaptureCurrent("Desk", manager);
 Check(!string.IsNullOrWhiteSpace(preset.PrimaryMonitorDeviceName), "Layout preset captures primary device");
 Check(preset.MonitorModes.Count >= count, "Layout preset captures mode per connected monitor");
+Check(preset.MonitorStates.Count >= count, "Display scene captures complete state per connected monitor");
+Check(preset.MonitorStates.Values.All(s => s.Orientation <= 3), "Display scene captures valid orientations");
+var scenePreview = LayoutPresetService.Preview(preset, new AppSettings(), manager);
+Check(scenePreview.Valid && scenePreview.IsPreview, "Display scene preview preflights without applying");
+var normalizedScene = preset.Clone();
+normalizedScene.Id = string.Empty;
+normalizedScene.Name = "  Imported desk  ";
+Check(LayoutPresetService.TryNormalizeImported(normalizedScene, out var normalizeError) && normalizeError is null,
+    "Scene import validation accepts and normalizes a complete scene");
+Check(normalizedScene.Name == "Imported desk" && !string.IsNullOrWhiteSpace(normalizedScene.Id),
+    "Scene import normalization trims the name and assigns an ID");
+var invalidScene = preset.Clone();
+invalidScene.MonitorStates.First().Value.Orientation = 9;
+Check(!LayoutPresetService.TryNormalizeImported(invalidScene, out var invalidSceneError) && invalidSceneError is not null,
+    "Scene import validation rejects an invalid orientation");
 
-v4Settings.SchemaVersion = 5;
+v4Settings.SchemaVersion = 7;
 v4Settings.LayoutPresets.Add(preset);
+v4Settings.Profiles[0].DisplaySceneId = preset.Id;
 v4Settings.LastUsedProfileId = gameProfile.Id;
 v4Settings.Profiles[0].LastTriggeredUtc = DateTime.UtcNow;
 var v4Json = JsonSerializer.Serialize(v4Settings);
@@ -507,6 +523,10 @@ Check(v4Restored?.LayoutPresets.Count == 1 && v4Restored.LayoutPresets[0].Name =
 Check(v4Restored?.LastUsedProfileId == gameProfile.Id, "LastUsedProfileId survives JSON round-trip");
 Check(v4Restored?.Profiles[0].LastTriggeredUtc > DateTime.MinValue,
     "LastTriggeredUtc survives JSON round-trip");
+Check(v4Restored?.Profiles[0].DisplaySceneId == preset.Id,
+    "Profile scene action survives JSON round-trip");
+Check(v4Settings.Profiles[0].Clone().DisplaySceneId == preset.Id,
+    "Profile clone preserves its scene action");
 
 // ─────────────────── Settings export / import ───────────────────
 Console.WriteLine("\n== Settings export / import ==");
@@ -558,6 +578,35 @@ Check(evalAlreadyPrimary.ProcessRunning && evalAlreadyPrimary.TargetConnected &&
     "Evaluate: process running and target connected, but already primary => no match");
 Check(evalAlreadyPrimary.Summary.Contains("already primary", StringComparison.OrdinalIgnoreCase),
     "Evaluate summary mentions already primary");
+
+var constrainedProfile = gameProfile.Clone();
+constrainedProfile.ExecutablePath = @"C:\Games\game.exe";
+constrainedProfile.WindowTitleContains = "Ranked Match";
+var detailedProcesses = new[]
+{
+    new LauncherChildTracker.RunningProcess(42, "game", @"C:\Games\game.exe", "Game — Ranked Match"),
+};
+var constrainedMatch = ProfileMatcher.Evaluate(
+    constrainedProfile,
+    runningGame,
+    dual,
+    runningProcesses: detailedProcesses);
+Check(constrainedMatch.ProcessRunning && constrainedMatch.PathConstraintMatched && constrainedMatch.WindowTitleConstraintMatched,
+    "Evaluate: executable path and window title constraints match");
+
+var wrongPathProcesses = new[]
+{
+    new LauncherChildTracker.RunningProcess(42, "game", @"D:\Other\game.exe", "Game — Ranked Match"),
+};
+var constrainedNoMatch = ProfileMatcher.Evaluate(
+    constrainedProfile,
+    runningGame,
+    dual,
+    runningProcesses: wrongPathProcesses);
+Check(!constrainedNoMatch.ProcessRunning && !constrainedNoMatch.PathConstraintMatched,
+    "Evaluate: wrong executable path blocks a name match");
+Check(constrainedNoMatch.Summary.Contains("Process name matched", StringComparison.OrdinalIgnoreCase),
+    "Evaluate: constraint failure is explained");
 
 // Corrupt JSON tolerance.
 AppSettings? corrupt = null;
