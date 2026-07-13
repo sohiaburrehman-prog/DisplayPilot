@@ -32,6 +32,9 @@ public sealed class ProcessWatcherService : IDisposable
     private readonly Dictionary<string, long> _activationOrder = new(StringComparer.Ordinal);
     private readonly Dictionary<string, LauncherChildTracker.WatchState> _launcherWatch = new(StringComparer.Ordinal);
     private readonly List<LauncherChildTracker.ProcessStart> _recentProcessStarts = new();
+    private readonly HashSet<string> _runningNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _liveIds = new(StringComparer.Ordinal);
+    private readonly List<string> _staleIds = new();
 
     private System.Threading.Timer? _timer;
     private ManagementEventWatcher? _startWatcher;
@@ -226,9 +229,11 @@ public sealed class ProcessWatcherService : IDisposable
                 .Select(p => p.Clone())
                 .ToList();
             var currentProcesses = GetRunningProcesses();
-            var runningNames = currentProcesses
-                .Select(p => p.Name)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _runningNames.Clear();
+            foreach (var p in currentProcesses)
+            {
+                _runningNames.Add(p.Name);
+            }
 
             IReadOnlyList<LauncherChildTracker.ProcessStart> recentStarts;
             lock (_lock)
@@ -257,7 +262,7 @@ public sealed class ProcessWatcherService : IDisposable
                     _launcherWatch.Remove(profile.Id);
                 }
 
-                var isRunning = ProfileMatcher.IsProfileActive(profile, runningNames, detectedChild);
+                var isRunning = ProfileMatcher.IsProfileActive(profile, _runningNames, detectedChild);
                 var wasRunning = _runningState.TryGetValue(profile.Id, out var previous) && previous;
                 _runningState[profile.Id] = isRunning;
 
@@ -281,8 +286,22 @@ public sealed class ProcessWatcherService : IDisposable
 
             ReconcileWinner(candidates, settings.ProfileConflictRule);
 
-            var liveIds = profiles.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
-            foreach (var staleId in _runningState.Keys.Where(k => !liveIds.Contains(k)).ToList())
+            _liveIds.Clear();
+            foreach (var p in profiles)
+            {
+                _liveIds.Add(p.Id);
+            }
+
+            _staleIds.Clear();
+            foreach (var key in _runningState.Keys)
+            {
+                if (!_liveIds.Contains(key))
+                {
+                    _staleIds.Add(key);
+                }
+            }
+
+            foreach (var staleId in _staleIds)
             {
                 _runningState.Remove(staleId);
                 _activationOrder.Remove(staleId);
