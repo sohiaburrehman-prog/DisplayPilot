@@ -330,6 +330,14 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // ⚡ Bolt: Fast-path out if there are no active candidates and no active session.
+        // Avoids calling GetMonitors() -> Win32 QueryDisplayConfig every 1s when idle.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            _forceReconcile = false;
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
