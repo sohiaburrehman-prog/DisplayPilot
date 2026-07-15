@@ -309,6 +309,12 @@ public sealed class ProcessWatcherService : IDisposable
         var ordered = ProfileConflictResolver.OrderCandidates(activeCandidates, rule).ToList();
         var preferred = ordered.FirstOrDefault();
 
+        // Bolt Optimization: Fast-path idle state to prevent polling monitors
+        if (preferred is null && !_forceReconcile && _winnerSnapshot is null)
+        {
+            return;
+        }
+
         if (preferred is not null &&
             !_forceReconcile &&
             _winnerSnapshot is not null &&
