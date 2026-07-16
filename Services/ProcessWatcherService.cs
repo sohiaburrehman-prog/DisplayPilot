@@ -309,6 +309,18 @@ public sealed class ProcessWatcherService : IDisposable
         var ordered = ProfileConflictResolver.OrderCandidates(activeCandidates, rule).ToList();
         var preferred = ordered.FirstOrDefault();
 
+        // ⚡ Bolt Optimization: Early Return
+        // When there are no active candidates (preferred is null) and no active
+        // automation session (_winnerSnapshot is null), we are in an idle state.
+        // Returning early here prevents unnecessary and expensive Win32 GPU queries
+        // (via DisplayManager.GetMonitors) that would otherwise cause micro-stutters
+        // during the polling loop.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         if (preferred is not null &&
             !_forceReconcile &&
             _winnerSnapshot is not null &&
