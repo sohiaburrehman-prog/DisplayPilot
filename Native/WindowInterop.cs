@@ -50,10 +50,48 @@ internal static class WindowInterop
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_FRAMECHANGED = 0x0020;
 
+    public const uint MonitorDefaultToPrimary = 1;
     public const uint MonitorDefaultToNearest = 2;
 
     /// <summary>MDT_EFFECTIVE_DPI for GetDpiForMonitor.</summary>
     public const int MdtEffectiveDpi = 0;
+
+    /// <summary>
+    /// Fresh work-area rectangle in physical pixels for the monitor nearest
+    /// <paramref name="point"/> (or primary if the point cannot be resolved).
+    /// Always queries Win32 — unlike WPF <c>SystemParameters.WorkArea</c>, which
+    /// caches and goes stale after resolution / topology changes.
+    /// </summary>
+    public static bool TryGetWorkAreaPixels(POINT point, out RECT workArea, out uint dpiX, out uint dpiY)
+    {
+        workArea = default;
+        dpiX = dpiY = 96;
+
+        var monitor = MonitorFromPoint(point, MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero)
+        {
+            monitor = MonitorFromPoint(default, MonitorDefaultToPrimary);
+        }
+
+        if (monitor == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfoW(monitor, ref info))
+        {
+            return false;
+        }
+
+        workArea = info.rcWork;
+        if (GetDpiForMonitor(monitor, MdtEffectiveDpi, out dpiX, out dpiY) != 0 || dpiX == 0 || dpiY == 0)
+        {
+            dpiX = dpiY = 96;
+        }
+
+        return true;
+    }
 
     public const int SW_RESTORE = 9;
     public const int SW_MAXIMIZE = 3;

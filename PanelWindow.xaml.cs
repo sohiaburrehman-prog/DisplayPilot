@@ -10,6 +10,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 
 using PrimaryDisplaySwap.Models;
+using PrimaryDisplaySwap.Native;
 using PrimaryDisplaySwap.Services;
 
 // The project references WinForms (tray icon), whose global usings make these
@@ -137,7 +138,7 @@ public partial class PanelWindow : Window
     }
 
     /// <summary>Positions the panel just above the tray (bottom-right of the
-    /// primary work area), shows it, and plays the entrance animation.</summary>
+    /// current work area), shows it, and plays the entrance animation.</summary>
     public void ShowNearTray()
     {
         var wasVisible = IsVisible;
@@ -150,10 +151,7 @@ public partial class PanelWindow : Window
         }
 
         UpdateLayout();
-
-        var area = SystemParameters.WorkArea;
-        Left = area.Right - ActualWidth - 16;
-        Top = area.Bottom - ActualHeight - 16;
+        PositionInWorkArea();
 
         Activate();
 
@@ -162,6 +160,66 @@ public partial class PanelWindow : Window
             PlayEntranceAnimation();
         }
     }
+
+    /// <summary>
+    /// Recomputes flyout placement from live Win32 work-area bounds (and clamps
+    /// on-screen). Call on every show and after DisplaySettingsChanged — WPF's
+    /// <see cref="SystemParameters.WorkArea"/> stays stale across resolution changes.
+    /// </summary>
+    public void PositionInWorkArea()
+    {
+        UpdateLayout();
+
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        var height = ActualHeight > 0 ? ActualHeight : Height;
+        if (width <= 0 || height <= 0)
+        {
+            return;
+        }
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (!WindowInterop.GetCursorPos(out var cursor))
+        {
+            cursor = default; // (0,0) → primary via MonitorDefaultToNearest/Primary
+        }
+
+        if (hwnd == IntPtr.Zero ||
+            !WindowInterop.TryGetWorkAreaPixels(cursor, out var work, out var dpiX, out var dpiY))
+        {
+            // Pre-hwnd / Win32 failure: fall back to (possibly stale) WPF work area.
+            var area = SystemParameters.WorkArea;
+            Left = Clamp(area.Right - width - 16, area.Left, area.Right - width);
+            Top = Clamp(area.Bottom - height - 16, area.Top, area.Bottom - height);
+            return;
+        }
+
+        // Place with SetWindowPos in physical pixels so PerMonitorV2 DPI and
+        // multi-monitor origins stay correct after 4K→1440p (etc.) changes.
+        var widthPx = Math.Max(1, (int)Math.Ceiling(width * dpiX / 96.0));
+        var heightPx = Math.Max(1, (int)Math.Ceiling(height * dpiY / 96.0));
+        var marginX = (int)Math.Round(16 * dpiX / 96.0);
+        var marginY = (int)Math.Round(16 * dpiY / 96.0);
+
+        var x = work.Right - widthPx - marginX;
+        var y = work.Bottom - heightPx - marginY;
+        x = Clamp(x, work.Left, work.Right - widthPx);
+        y = Clamp(y, work.Top, work.Bottom - heightPx);
+
+        WindowInterop.SetWindowPos(
+            hwnd,
+            IntPtr.Zero,
+            x,
+            y,
+            0,
+            0,
+            WindowInterop.SWP_NOSIZE | WindowInterop.SWP_NOZORDER | WindowInterop.SWP_NOACTIVATE);
+    }
+
+    private static double Clamp(double value, double min, double max) =>
+        max < min ? min : Math.Min(Math.Max(value, min), max);
+
+    private static int Clamp(int value, int min, int max) =>
+        max < min ? min : Math.Min(Math.Max(value, min), max);
 
     private void PlayEntranceAnimation()
     {

@@ -17,6 +17,11 @@ All notable changes to DisplayPilot are documented here.
 - Settings schema upgraded to v7. Existing mode-only layout presets remain importable and apply without changing their live position, rotation, or HDR state
 - Process polling only reads executable paths and window titles for profiles that use advanced constraints; full process inspection occurs on demand for diagnostics
 
+## [1.7.17] — 2026-07-18
+
+### Fixed
+- **Flyout position after resolution change** — the panel now re-queries the live Win32 work area (and clamps on-screen) on every show and after `DisplaySettingsChanged`, instead of trusting WPF’s cached `SystemParameters.WorkArea`. Fixes the flyout opening mid-desktop or off-screen after switching a monitor from 4K to 1440p
+
 ## [1.7.16] — 2026-07-12
 
 ### Changed

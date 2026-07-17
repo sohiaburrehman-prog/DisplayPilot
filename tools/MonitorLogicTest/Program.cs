@@ -660,5 +660,18 @@ Check(!LocalAppLaunchHelper.IsUnderAppDataRoot($@"{appRoot}\log.txt"" /e,notepad
 Check(!LocalAppLaunchHelper.IsUnderAppDataRoot(null), "Null path rejected");
 Check(!LocalAppLaunchHelper.IsUnderAppDataRoot(""), "Empty path rejected");
 
+Console.WriteLine("\n== Work-area query (flyout placement) ==");
+{
+    var ok = PrimaryDisplaySwap.Native.WindowInterop.TryGetWorkAreaPixels(
+        new PrimaryDisplaySwap.Native.WindowInterop.POINT { X = 0, Y = 0 },
+        out var work,
+        out var dpiX,
+        out var dpiY);
+    Check(ok, "TryGetWorkAreaPixels succeeds for primary");
+    Check(work.Width > 0 && work.Height > 0, "Work area has positive size");
+    Check(dpiX >= 96 && dpiY >= 96, $"DPI is at least 96 (got {dpiX}x{dpiY})");
+    Check(work.Right > work.Left && work.Bottom > work.Top, "Work area rect is well-ordered");
+}
+
 Console.WriteLine($"\n{passed} passed, {failed} failed");
 Environment.Exit(failed > 0 ? 1 : 0);

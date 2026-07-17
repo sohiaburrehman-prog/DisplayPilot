@@ -13,9 +13,9 @@
     <AssemblyName>DisplayPilot</AssemblyName>
     <AssemblyTitle>DisplayPilot</AssemblyTitle>
     <Product>DisplayPilot</Product>
-    <Version>1.7.16</Version>
-    <AssemblyVersion>1.7.16.0</AssemblyVersion>
-    <FileVersion>1.7.16.0</FileVersion>
+    <Version>1.7.17</Version>
+    <AssemblyVersion>1.7.17.0</AssemblyVersion>
+    <FileVersion>1.7.17.0</FileVersion>
     <RootNamespace>PrimaryDisplaySwap</RootNamespace>
     <!-- Program.Main owns startup (single-instance mutex) instead of the
          WPF-generated entry point. -->

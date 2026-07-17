@@ -238,6 +238,13 @@ public partial class App : System.Windows.Application
         Dispatcher.BeginInvoke(() =>
         {
             _panel?.RefreshMonitors();
+            // Work-area coordinates go stale after resolution/topology changes;
+            // re-place the flyout if it is already open.
+            if (_panel?.IsVisible == true)
+            {
+                _panel.PositionInWorkArea();
+            }
+
             _tray?.RefreshMenu();
             _settingsWindow?.LoadFromSettings();
             _profilesWindow?.RefreshMonitors();
