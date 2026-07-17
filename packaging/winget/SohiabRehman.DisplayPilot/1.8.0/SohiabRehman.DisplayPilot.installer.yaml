@@ -1,0 +1,25 @@
+# Created with wingetcreate 1.6.0
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+
+PackageIdentifier: SohiabRehman.DisplayPilot
+PackageVersion: 1.8.0
+Platform:
+- Windows.Desktop
+MinimumOSVersion: 10.0.17763.0
+InstallerType: inno
+Scope: user
+InstallModes:
+- silent
+- silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: 2026-07-14
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/sohiaburrehman-prog/DisplayPilot/releases/download/v1.8.0/DisplayPilot-Setup.exe
+  InstallerSha256: 7E9458DB4BC0681449FD0870D776F17A579CBE59CD89D4FDB5265C5345AD7993
+  ProductCode: DisplayPilot_is1
+  AppsAndFeaturesEntries:
+  - DisplayName: DisplayPilot
+    Publisher: Sohiab Rehman
+ManifestType: installer
+ManifestVersion: 1.6.0

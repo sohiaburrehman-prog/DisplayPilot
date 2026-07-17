@@ -20,6 +20,7 @@
     <Compile Include="..\..\Services\WindowRelocationService.cs" />
     <Compile Include="..\..\Native\WindowInterop.cs" />
     <Compile Include="..\..\Services\LayoutPresetService.cs" />
+    <Compile Include="..\..\Services\DisplaySceneDiagnosticsService.cs" />
     <Compile Include="..\..\Services\ArrangementMapLayout.cs" />
     <Compile Include="..\..\Services\LauncherChildTracker.cs" />
     <Compile Include="..\..\Services\ChangelogService.cs" />

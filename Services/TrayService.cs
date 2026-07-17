@@ -353,12 +353,15 @@ internal sealed class TrayService : IDisposable
 
         var profiles = _settings.Current.Profiles;
         var enabled = profiles.Count(p => p.Enabled);
+        var paused = _processWatcher?.IsPaused == true;
 
-        var status = profiles.Count == 0
-            ? "No profiles yet"
-            : enabled == profiles.Count
-                ? $"{enabled} profile{(enabled == 1 ? "" : "s")} active"
-                : $"{enabled} of {profiles.Count} active";
+        var status = paused
+            ? $"Paused {_processWatcher!.PauseLabel}"
+            : profiles.Count == 0
+                ? "No profiles yet"
+                : enabled == profiles.Count
+                    ? $"{enabled} profile{(enabled == 1 ? "" : "s")} active"
+                    : $"{enabled} of {profiles.Count} active";
 
         _menu.Items.Add(CreateLabel(status, TrayMenuTags.Status));
 
@@ -366,6 +369,53 @@ internal sealed class TrayService : IDisposable
         var profilesItem = CreateActionItem(label);
         profilesItem.Click += (_, _) => ProfilesRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(profilesItem);
+
+        AddPauseItems(paused);
+    }
+
+    /// <summary>
+    /// Pause/resume controls for the watcher. Pausing stops auto-swap from
+    /// reacting to process starts/exits without touching profile enablement —
+    /// useful when a profile misfires during normal desktop use.
+    /// </summary>
+    private void AddPauseItems(bool paused)
+    {
+        if (_processWatcher is null)
+        {
+            return;
+        }
+
+        if (paused)
+        {
+            var resumeItem = CreateActionItem("▶  &Resume auto-swap");
+            resumeItem.Click += (_, _) => _processWatcher.ResumeAutoSwap();
+            _menu.Items.Add(resumeItem);
+            return;
+        }
+
+        var pauseItem = CreateActionItem("⏸  &Pause auto-swap");
+        var pauseMenu = new ContextMenuStrip
+        {
+            Renderer = new DarkMenuRenderer(),
+            ShowImageMargin = false,
+            Font = AppTheme.MenuBodyFont,
+            Padding = new Padding(4, 6, 4, 6),
+        };
+
+        var pause30 = CreateActionItem("For 30 minutes");
+        pause30.Click += (_, _) => _processWatcher.PauseAutoSwap(TimeSpan.FromMinutes(30));
+        pauseMenu.Items.Add(pause30);
+
+        var pause60 = CreateActionItem("For 1 hour");
+        pause60.Click += (_, _) => _processWatcher.PauseAutoSwap(TimeSpan.FromHours(1));
+        pauseMenu.Items.Add(pause60);
+
+        var pauseIndefinite = CreateActionItem("Until I resume");
+        pauseIndefinite.Click += (_, _) => _processWatcher.PauseAutoSwap(null);
+        pauseMenu.Items.Add(pauseIndefinite);
+
+        pauseItem.DropDown = pauseMenu;
+        _menu.Items.Add(pauseItem);
     }
 
     private void AddSwapAction(IReadOnlyList<MonitorInfo> monitors)

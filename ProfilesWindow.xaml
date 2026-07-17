@@ -39,8 +39,9 @@
                                AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource MiniButton}"
-                            Content="Explain current state"
+                    <Button x:Name="ExplainStateButton"
+                            Style="{StaticResource MiniButton}"
+                            Content="Explain profiles"
                             AutomationProperties.Name="Explain profile matching and winner"
                             Margin="0,0,8,0"
                             Click="ShowDiagnostics_Click" />
@@ -54,9 +55,10 @@
         </Border>
 
         <TabControl x:Name="MainTabControl" Grid.Row="1" Margin="16,12,16,8"
-                    Background="Transparent" BorderThickness="0">
+                    SelectionChanged="MainTabControl_SelectionChanged"
+                    Style="{StaticResource FlyoutTabControl}">
             <TabItem Header="Profiles">
-                <Grid Margin="0,10,0,0">
+                <Grid Margin="0,2,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -152,7 +154,7 @@
             </TabItem>
 
             <TabItem Header="Display scenes">
-                <Grid Margin="0,10,0,0">
+                <Grid Margin="0,2,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />

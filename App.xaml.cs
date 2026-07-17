@@ -432,7 +432,8 @@ public partial class App : System.Windows.Application
                 RunSetupWizard,
                 () => ShowProfiles(),
                 ShowLog,
-                ValidateHotkeys)
+                ValidateHotkeys,
+                _displayManager)
             {
                 Owner = _panel,
             };

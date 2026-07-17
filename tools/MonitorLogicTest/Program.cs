@@ -528,6 +528,52 @@ Check(v4Restored?.Profiles[0].DisplaySceneId == preset.Id,
 Check(v4Settings.Profiles[0].Clone().DisplaySceneId == preset.Id,
     "Profile clone preserves its scene action");
 
+var explanation = DisplaySceneDiagnosticsService.FormatReport(new DisplaySceneDiagnosticsService.Snapshot
+{
+    Monitors = new List<DisplaySceneDiagnosticsService.MonitorEntry>
+    {
+        new()
+        {
+            Label = "Desk",
+            DeviceName = @"\\.\DISPLAY1",
+            IsPrimary = true,
+            State = new DisplaySceneMonitorState
+            {
+                Width = 3840,
+                Height = 2160,
+                RefreshRateHz = 120,
+                PositionX = 0,
+                PositionY = 0,
+                Orientation = 0,
+                HdrEnabled = true,
+            },
+        },
+    },
+    Scenes = new List<DisplaySceneDiagnosticsService.SceneEntry>
+    {
+        new()
+        {
+            Name = "Gaming",
+            Id = "scene-1",
+            PrimaryLabel = "Desk",
+            IsFullScene = true,
+            MonitorCount = 1,
+            CanApply = true,
+            Summary = "Scene is ready.",
+            Changes = new[] { "Desk: HDR off" },
+            ReferencedByProfiles = new[] { "game" },
+        },
+    },
+});
+Check(explanation.Contains("CURRENT DISPLAY STATE", StringComparison.Ordinal) &&
+      explanation.Contains("Desk [PRIMARY]", StringComparison.Ordinal) &&
+      explanation.Contains("HDR on", StringComparison.Ordinal),
+    "Display-scene explanation includes the current primary state");
+Check(explanation.Contains("[READY] Gaming", StringComparison.Ordinal) &&
+      explanation.Contains("Would change: Desk: HDR off", StringComparison.Ordinal) &&
+      explanation.Contains("Used by profiles: game", StringComparison.Ordinal),
+    "Display-scene explanation includes readiness, changes, and profile references");
+
 // ─────────────────── Settings export / import ───────────────────
 Console.WriteLine("\n== Settings export / import ==");
 

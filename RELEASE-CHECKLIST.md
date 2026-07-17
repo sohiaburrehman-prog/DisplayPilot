@@ -1,6 +1,6 @@
 # DisplayPilot release verification
 
-Tested **2026-07-12** on Windows 11, dual monitors (AORUS FO32U2P + Dell AW3423DW).
+Tested **2026-07-14** on Windows 11, dual monitors (AORUS FO32U2P + Dell AW3423DW).
 
 ## Monitor count paths
 

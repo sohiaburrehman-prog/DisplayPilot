@@ -38,6 +38,10 @@ public sealed class ProcessWatcherService : IDisposable
     private bool _polling;
     private bool _disposed;
     private volatile bool _forceReconcile;
+
+    // Pause state: MinValue = running, MaxValue = paused until manually
+    // resumed, anything else = paused until that UTC time (auto-resumes).
+    private DateTime _pausedUntilUtc = DateTime.MinValue;
     private long _nextActivationOrder;
     private ActiveProfileState? _currentActiveProfile;
     private HashSet<string> _matchedProfileIds = new(StringComparer.Ordinal);
@@ -52,6 +56,113 @@ public sealed class ProcessWatcherService : IDisposable
     public event EventHandler? PrimaryChanged;
     public event EventHandler? ActiveProfileChanged;
     public event EventHandler<string>? StatusMessage;
+
+    /// <summary>Raised when auto-swap is paused or resumed (including auto-expiry).</summary>
+    public event EventHandler? PauseChanged;
+
+    /// <summary>True while auto-swap matching is paused.</summary>
+    public bool IsPaused
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pausedUntilUtc != DateTime.MinValue && DateTime.UtcNow < _pausedUntilUtc;
+            }
+        }
+    }
+
+    /// <summary>Short label for menus, e.g. "until 18:30" or "until resumed". Null when running.</summary>
+    public string? PauseLabel
+    {
+        get
+        {
+            lock (_lock)
+            {
+                if (_pausedUntilUtc == DateTime.MinValue || DateTime.UtcNow >= _pausedUntilUtc)
+                {
+                    return null;
+                }
+
+                return _pausedUntilUtc == DateTime.MaxValue
+                    ? "until resumed"
+                    : $"until {_pausedUntilUtc.ToLocalTime():HH:mm}";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Pauses auto-swap matching. Profiles stay enabled; the watcher simply
+    /// stops reacting to process starts/exits (the current primary is left
+    /// as-is). Pass null to pause until <see cref="ResumeAutoSwap"/> is called.
+    /// </summary>
+    public void PauseAutoSwap(TimeSpan? duration)
+    {
+        lock (_lock)
+        {
+            _pausedUntilUtc = duration is null
+                ? DateTime.MaxValue
+                : DateTime.UtcNow + duration.Value;
+        }
+
+        var label = PauseLabel ?? "until resumed";
+        AppLogger.Log($"Auto-swap paused {label}.");
+        StatusMessage?.Invoke(this, $"Auto-swap paused {label}.");
+        PauseChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Resumes auto-swap matching and reconciles immediately.</summary>
+    public void ResumeAutoSwap()
+    {
+        lock (_lock)
+        {
+            if (_pausedUntilUtc == DateTime.MinValue)
+            {
+                return;
+            }
+
+            _pausedUntilUtc = DateTime.MinValue;
+        }
+
+        AppLogger.Log("Auto-swap resumed.");
+        StatusMessage?.Invoke(this, "Auto-swap resumed.");
+        PauseChanged?.Invoke(this, EventArgs.Empty);
+        _forceReconcile = true;
+        ThreadPool.QueueUserWorkItem(_ => Poll());
+    }
+
+    /// <summary>
+    /// True when polling should be skipped because auto-swap is paused.
+    /// Clears an expired timed pause (auto-resume) as a side effect.
+    /// </summary>
+    private bool IsPausedForPoll()
+    {
+        bool expired;
+        lock (_lock)
+        {
+            if (_pausedUntilUtc == DateTime.MinValue)
+            {
+                return false;
+            }
+
+            expired = DateTime.UtcNow >= _pausedUntilUtc;
+            if (expired)
+            {
+                _pausedUntilUtc = DateTime.MinValue;
+            }
+        }
+
+        if (!expired)
+        {
+            return true;
+        }
+
+        AppLogger.Log("Auto-swap pause expired; resuming.");
+        StatusMessage?.Invoke(this, "Auto-swap resumed.");
+        PauseChanged?.Invoke(this, EventArgs.Empty);
+        _forceReconcile = true;
+        return false;
+    }
 
     public ActiveProfileState? CurrentActiveProfile
     {
@@ -234,6 +345,11 @@ public sealed class ProcessWatcherService : IDisposable
 
         try
         {
+            if (IsPausedForPoll())
+            {
+                return;
+            }
+
             var settings = _settings.Current;
             var profiles = settings.Profiles
                 .Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.ProcessName))

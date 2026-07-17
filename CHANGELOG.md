@@ -4,7 +4,11 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-07-18
+
 ### Added
+- **Displays page in Settings** — per-monitor cards with inline nickname editing (previously flyout-only), current resolution/refresh, primary marker, and an HDR toggle for displays that support it
+- **Pause auto-swap** — tray menu can pause the process watcher for 30 minutes, 1 hour, or until resumed; profiles stay enabled, the watcher just stops reacting. Timed pauses auto-resume and the menu shows the paused state
 - **Transactional display scenes** — capture primary display, resolution, refresh, desktop position, rotation, and HDR for every active monitor; preflight exact changes before applying and automatically roll back the complete scene when any step fails
 - **Scene preview and scripting** — preview scenes in the profile manager or with `--preview-scene`; `--list-scenes`, `--apply-scene`, and `--dry-run` provide JSON-compatible automation while the old preset commands remain aliases
 - **Richer profile matching** — optionally constrain a profile to an exact executable path and/or a case-insensitive main-window-title substring
@@ -14,8 +18,12 @@ All notable changes to DisplayPilot are documented here.
 - **Complete scene CLI** — capture, rename, delete, export, and import individual scenes; use `--temporary <seconds>` to apply a scene and restore automatically
 
 ### Changed
+- **Settings sidebar** — the Settings window now uses left sidebar navigation (General / Shortcuts / Displays / Automation / Data & support) instead of top tabs; pages no longer influence window height
 - Settings schema upgraded to v7. Existing mode-only layout presets remain importable and apply without changing their live position, rotation, or HDR state
 - Process polling only reads executable paths and window titles for profiles that use advanced constraints; full process inspection occurs on demand for diagnostics
+
+### Fixed
+- “Explain” is now tab-aware: the Display scenes tab reports the live topology, saved-scene readiness, pending changes, and profile references instead of opening unrelated profile diagnostics
 
 ## [1.7.17] — 2026-07-18
 

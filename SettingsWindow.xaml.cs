@@ -9,7 +9,9 @@ using PrimaryDisplaySwap.Models;
 using PrimaryDisplaySwap.Services;
 
 using Button = System.Windows.Controls.Button;
+using CheckBox = System.Windows.Controls.CheckBox;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using TextBox = System.Windows.Controls.TextBox;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
@@ -22,6 +24,7 @@ public partial class SettingsWindow : Window
 
     private readonly SettingsService _settings;
     private readonly StartupService _startup;
+    private readonly DisplayManager? _displayManager;
     private readonly Action? _runWizard;
     private readonly Action? _openProfileManager;
     private readonly Action? _openLog;
@@ -30,6 +33,7 @@ public partial class SettingsWindow : Window
     private CaptureTarget _capturing = CaptureTarget.None;
     private bool _suppressToggleEvents;
     private UpdateInfo? _availableUpdate;
+    private bool _displaysPopulated;
 
     public SettingsWindow(
         SettingsService settings,
@@ -37,10 +41,12 @@ public partial class SettingsWindow : Window
         Action? runWizard = null,
         Action? openProfileManager = null,
         Action? openLog = null,
-        Func<HotkeyConfig, HotkeyConfig, HotkeyApplyResult>? validateHotkeys = null)
+        Func<HotkeyConfig, HotkeyConfig, HotkeyApplyResult>? validateHotkeys = null,
+        DisplayManager? displayManager = null)
     {
         _settings = settings;
         _startup = startup;
+        _displayManager = displayManager;
         _runWizard = runWizard;
         _openProfileManager = openProfileManager;
         _openLog = openLog;
@@ -299,11 +305,214 @@ public partial class SettingsWindow : Window
 
     public void ShowHotkeyFailure(string message)
     {
-        SettingsTabs.SelectedIndex = 1;
+        NavList.SelectedIndex = 1;
         CaptureHint.Text = message;
         CaptureHint.Visibility = Visibility.Visible;
         SetStatus(message);
     }
+
+    // ─────────────────────── Sidebar navigation ───────────────────────
+
+    private void Nav_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        // Pages array order matches the sidebar items.
+        var pages = new UIElement?[] { PageGeneral, PageShortcuts, PageDisplays, PageAutomation, PageSupport };
+        var index = Math.Clamp(NavList.SelectedIndex, 0, pages.Length - 1);
+        for (var i = 0; i < pages.Length; i++)
+        {
+            if (pages[i] is not null)
+            {
+                pages[i]!.Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        // Monitor enumeration costs a few Win32 calls; only do it when the
+        // Displays page is first shown (Refresh re-runs it on demand).
+        if (index == 2 && !_displaysPopulated)
+        {
+            PopulateDisplays();
+        }
+    }
+
+    // ─────────────────────── Displays page ───────────────────────
+
+    private void RefreshDisplays_Click(object sender, RoutedEventArgs e) => PopulateDisplays();
+
+    private void PopulateDisplays()
+    {
+        _displaysPopulated = true;
+        DisplaysPanel.Children.Clear();
+
+        if (_displayManager is null)
+        {
+            DisplaysPanel.Children.Add(MutedText("Display information is not available in this window."));
+            return;
+        }
+
+        IReadOnlyList<MonitorInfo> monitors;
+        try
+        {
+            monitors = _displayManager.GetMonitors();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"Settings displays page: monitor enumeration failed: {ex.Message}");
+            DisplaysPanel.Children.Add(MutedText("Could not enumerate displays. See the activity log."));
+            return;
+        }
+
+        foreach (var monitor in monitors)
+        {
+            DisplaysPanel.Children.Add(BuildDisplayCard(monitor));
+        }
+    }
+
+    private UIElement BuildDisplayCard(MonitorInfo monitor)
+    {
+        var deviceName = monitor.DeviceName;
+
+        var content = new StackPanel();
+
+        // Header: numbered friendly name + primary badge, specs underneath.
+        var title = new TextBlock
+        {
+            Text = MonitorDisplayHelper.GetNumberedName(monitor, _settings.Current) +
+                   (monitor.IsPrimary ? "  ·  primary" : string.Empty),
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (System.Windows.Media.Brush)FindResource("TextPrimaryBrush"),
+        };
+        var specs = new TextBlock
+        {
+            Text = $"{monitor.SpecsLabel}  ·  {deviceName}",
+            FontSize = 11,
+            Foreground = (System.Windows.Media.Brush)FindResource("TextMutedBrush"),
+            Margin = new Thickness(0, 2, 0, 10),
+        };
+        content.Children.Add(title);
+        content.Children.Add(specs);
+
+        // Nickname row.
+        var nicknameGrid = new Grid();
+        nicknameGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        nicknameGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        nicknameGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var nicknameLabel = new TextBlock
+        {
+            Text = "Nickname",
+            FontSize = 11.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush"),
+            Margin = new Thickness(0, 0, 10, 0),
+        };
+        var nicknameBox = new TextBox
+        {
+            Style = (Style)FindResource("DarkTextBox"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Text = _settings.Current.MonitorNicknames.TryGetValue(deviceName, out var nick) ? nick : string.Empty,
+        };
+        var saveButton = new Button
+        {
+            Style = (Style)FindResource("MiniButton"),
+            Content = "Save",
+            Width = 64,
+            Margin = new Thickness(8, 0, 0, 0),
+        };
+        saveButton.Click += (_, _) =>
+        {
+            var value = nicknameBox.Text.Trim();
+            _settings.Update(s =>
+            {
+                if (string.IsNullOrEmpty(value))
+                {
+                    s.MonitorNicknames.Remove(deviceName);
+                }
+                else
+                {
+                    s.MonitorNicknames[deviceName] = value;
+                }
+            });
+            SetStatus(string.IsNullOrEmpty(value)
+                ? $"Nickname cleared for {monitor.Name}."
+                : $"{monitor.Name} is now \"{value}\".");
+            PopulateDisplays();
+        };
+
+        Grid.SetColumn(nicknameLabel, 0);
+        Grid.SetColumn(nicknameBox, 1);
+        Grid.SetColumn(saveButton, 2);
+        nicknameGrid.Children.Add(nicknameLabel);
+        nicknameGrid.Children.Add(nicknameBox);
+        nicknameGrid.Children.Add(saveButton);
+        content.Children.Add(nicknameGrid);
+
+        // HDR toggle, shown only when the display reports support.
+        var hdr = TryGetHdrStatus(deviceName);
+        if (hdr is { Supported: true })
+        {
+            var hdrCheck = new CheckBox
+            {
+                Style = (Style)FindResource("DarkCheckBox"),
+                Content = "HDR",
+                IsChecked = hdr.Enabled,
+                Margin = new Thickness(0, 10, 0, 0),
+                Foreground = (System.Windows.Media.Brush)FindResource("TextPrimaryBrush"),
+            };
+            hdrCheck.Click += async (_, _) =>
+            {
+                var enable = hdrCheck.IsChecked == true;
+                try
+                {
+                    hdrCheck.IsEnabled = false;
+                    await System.Threading.Tasks.Task.Run(() => _displayManager!.SetHdrEnabled(deviceName, enable));
+                    SetStatus($"{MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current)}: HDR {(enable ? "on" : "off")}.");
+                }
+                catch (Exception ex)
+                {
+                    hdrCheck.IsChecked = !enable;
+                    SetStatus(ex.Message);
+                }
+                finally
+                {
+                    hdrCheck.IsEnabled = true;
+                }
+            };
+            content.Children.Add(hdrCheck);
+        }
+
+        return new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("MapSurfaceBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("HairlineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 0, 0, 10),
+            Child = content,
+        };
+    }
+
+    private DisplayManager.HdrStatus? TryGetHdrStatus(string deviceName)
+    {
+        try
+        {
+            return _displayManager?.GetHdrStatus(deviceName);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Log($"HDR status lookup failed for {deviceName}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private TextBlock MutedText(string text) => new()
+    {
+        Text = text,
+        FontSize = 11.5,
+        TextWrapping = TextWrapping.Wrap,
+        Foreground = (System.Windows.Media.Brush)FindResource("TextMutedBrush"),
+    };
 
     private static bool IsModifierKey(Key key) => key is
         Key.LeftCtrl or Key.RightCtrl or

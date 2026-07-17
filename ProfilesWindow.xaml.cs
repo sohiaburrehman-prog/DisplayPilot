@@ -602,68 +602,118 @@ public partial class ProfilesWindow : Window
 
     private void AddProfile_Click(object sender, RoutedEventArgs e) => BeginAddProfile();
 
-    private void ShowDiagnostics_Click(object sender, RoutedEventArgs e)
+    private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!ReferenceEquals(e.Source, MainTabControl) || ExplainStateButton is null)
+        {
+            return;
+        }
+
+        var scenesSelected = MainTabControl.SelectedIndex == 1;
+        ExplainStateButton.Content = scenesSelected ? "Explain display state" : "Explain profiles";
+        System.Windows.Automation.AutomationProperties.SetName(
+            ExplainStateButton,
+            scenesSelected
+                ? "Explain current displays and saved scenes"
+                : "Explain profile matching and winner");
+    }
+
+    private async void ShowDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        ExplainStateButton.IsEnabled = false;
+        var explainScenes = MainTabControl.SelectedIndex == 1;
+        SetStatus(explainScenes ? "Inspecting displays and saved scenes…" : "Inspecting profile matches…");
         try
         {
-            var processes = ProcessWatcherService.GetRunningProcesses(includeDetails: true);
-            var snapshot = ProfileDiagnosticsService.Capture(
-                _settings.Current,
-                _cachedMonitors,
-                processes,
-                _processWatcher?.CurrentActiveProfile?.ProfileId,
-                _processWatcher?.CurrentMatchedProfileIds);
-
-            var dialog = new Window
+            if (explainScenes)
             {
-                Title = "DisplayPilot — Profile diagnostics",
-                Owner = this,
-                Width = 720,
-                Height = 600,
-                MinWidth = 520,
-                MinHeight = 360,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Background = (Brush)FindResource("FlyoutOpaqueBrush"),
-                FontFamily = (System.Windows.Media.FontFamily)FindResource("UiFont"),
-            };
-            var grid = new Grid { Margin = new Thickness(16) };
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var report = new TextBox
+                var sceneSnapshot = await Task.Run(() =>
+                    DisplaySceneDiagnosticsService.Capture(_settings.Current, _displayManager));
+                ShowDiagnosticsDialog(
+                    "DisplayPilot — Display scene diagnostics",
+                    DisplaySceneDiagnosticsService.FormatReport(sceneSnapshot));
+                SetStatus($"Explained {sceneSnapshot.Monitors.Count} display(s) and {sceneSnapshot.Scenes.Count} saved scene(s).");
+            }
+            else
             {
-                Text = ProfileDiagnosticsService.FormatReport(snapshot),
-                IsReadOnly = true,
-                TextWrapping = TextWrapping.Wrap,
-                AcceptsReturn = true,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Background = (Brush)FindResource("CardBrush"),
-                Foreground = (Brush)FindResource("TextPrimaryBrush"),
-                BorderBrush = (Brush)FindResource("HairlineBrush"),
-                Padding = new Thickness(12),
-                FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-                FontSize = 12,
-            };
-            grid.Children.Add(report);
-            var close = new Button
-            {
-                Content = "Close",
-                Style = (Style)FindResource("AccentMiniButton"),
-                Width = 110,
-                Margin = new Thickness(0, 12, 0, 0),
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-                IsCancel = true,
-            };
-            close.Click += (_, _) => dialog.Close();
-            Grid.SetRow(close, 1);
-            grid.Children.Add(close);
-            dialog.Content = grid;
-            dialog.ShowDialog();
+                var snapshot = await Task.Run(() =>
+                {
+                    var processes = ProcessWatcherService.GetRunningProcesses(includeDetails: true);
+                    return ProfileDiagnosticsService.Capture(
+                        _settings.Current,
+                        _cachedMonitors,
+                        processes,
+                        _processWatcher?.CurrentActiveProfile?.ProfileId,
+                        _processWatcher?.CurrentMatchedProfileIds);
+                });
+                ShowDiagnosticsDialog(
+                    "DisplayPilot — Profile diagnostics",
+                    ProfileDiagnosticsService.FormatReport(snapshot));
+                SetStatus($"Explained {_settings.Current.Profiles.Count} profile(s).");
+            }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Could not explain profiles", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(
+                ex.Message,
+                explainScenes ? "Could not explain display scenes" : "Could not explain profiles",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            SetStatus("Could not build the explanation.");
         }
+        finally
+        {
+            ExplainStateButton.IsEnabled = true;
+        }
+    }
+
+    private void ShowDiagnosticsDialog(string title, string text)
+    {
+        var dialog = new Window
+        {
+            Title = title,
+            Owner = this,
+            Width = 720,
+            Height = 600,
+            MinWidth = 520,
+            MinHeight = 360,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = (Brush)FindResource("FlyoutOpaqueBrush"),
+            FontFamily = (System.Windows.Media.FontFamily)FindResource("UiFont"),
+        };
+        var grid = new Grid { Margin = new Thickness(16) };
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var report = new TextBox
+        {
+            Text = text,
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+            AcceptsReturn = true,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Background = (Brush)FindResource("CardBrush"),
+            Foreground = (Brush)FindResource("TextPrimaryBrush"),
+            BorderBrush = (Brush)FindResource("HairlineBrush"),
+            Padding = new Thickness(12),
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            FontSize = 12,
+        };
+        grid.Children.Add(report);
+        var close = new Button
+        {
+            Content = "Close",
+            Style = (Style)FindResource("AccentMiniButton"),
+            Width = 110,
+            Margin = new Thickness(0, 12, 0, 0),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            IsCancel = true,
+        };
+        close.Click += (_, _) => dialog.Close();
+        Grid.SetRow(close, 1);
+        grid.Children.Add(close);
+        dialog.Content = grid;
+        dialog.ShowDialog();
     }
 
     private void SetStatus(string message) => StatusText.Text = message;
