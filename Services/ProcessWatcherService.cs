@@ -483,6 +483,15 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // Fast-path: When in an idle state (no active profile and no active session to restore),
+        // we can safely return early without invoking GetMonitors() to avoid expensive Win32
+        // API calls (QueryActiveConfig) from running frequently in the background.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
