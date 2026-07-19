@@ -483,6 +483,13 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // ⚡ Bolt: Fast path for idle state. If no profile is active and we don't have an active session,
+        // we can skip querying monitors (which triggers expensive Win32 display API calls)
+        if (preferred is null && _winnerSnapshot is null && !_forceReconcile)
+        {
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
