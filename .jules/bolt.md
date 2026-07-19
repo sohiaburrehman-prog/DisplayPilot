@@ -4,3 +4,6 @@
 ## 2024-05-24 - `QueryActiveConfig` is an expensive Win32 call
 **Learning:** `QueryActiveConfig` (which wraps `QueryDisplayConfig`) is an expensive Win32 API call. When retrieving monitor information, we were making this call twice: once for friendly names and once for virtual-desktop bounds.
 **Action:** Combine operations that rely on `QueryActiveConfig` into a single loop to halve the number of expensive system calls and reduce micro-stutters when `GetMonitors` is called.
+## 2024-05-24 - Unnecessary `GetMonitors` call during idle polling causes micro-stutters
+**Learning:** Even when there are no active profiles and no active auto-swap session, the polling loop in `ProcessWatcherService` was still calling `DisplayManager.GetMonitors()` which triggers expensive `QueryActiveConfig` Win32 calls.
+**Action:** Always add early returns for idle states before invoking expensive OS APIs like `GetMonitors()`.
