@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+        shell: pwsh
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+        shell: pwsh
+
+      - name: MonitorLogicTest
+        run: dotnet run --project tools/MonitorLogicTest/MonitorLogicTest.csproj -c Release
+        shell: pwsh

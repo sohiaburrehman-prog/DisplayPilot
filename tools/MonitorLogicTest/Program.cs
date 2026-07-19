@@ -96,6 +96,118 @@ Check(count <= 1 == (count <= 1), $"UI empty state when count <= 1: {count <= 1}
 Check(true, $"UI swap button when count == 2: {count == 2}");
 Check(true, $"UI set-primary hint when count > 2: {count > 2}");
 
+// ─────────────────── SetPrimaryByDeviceName / index race ───────────────────
+Console.WriteLine("\n== SetPrimaryByDeviceName single-snapshot (index race) ==");
+{
+    static MonitorInfo MakeMon(int index, string device, bool primary) => new()
+    {
+        Index = index,
+        DeviceName = device,
+        Name = $"Monitor {index + 1}",
+        Width = 1920,
+        Height = 1080,
+        PositionX = index * 1920,
+        PositionY = 0,
+        IsPrimary = primary,
+        RefreshRateHz = 60,
+    };
+
+    var orderA = new List<MonitorInfo>
+    {
+        MakeMon(0, @"\\.\DISPLAY1", primary: true),
+        MakeMon(1, @"\\.\DISPLAY2", primary: false),
+    };
+    // Same devices, reversed enumeration order with fresh indices (hotplug / driver churn).
+    var orderB = new List<MonitorInfo>
+    {
+        MakeMon(0, @"\\.\DISPLAY2", primary: false),
+        MakeMon(1, @"\\.\DISPLAY1", primary: true),
+    };
+
+    var stale = DisplayManager.ResolvePrimaryByStaleIndex(orderA, orderB, @"\\.\DISPLAY2");
+    Check(stale.DeviceName == @"\\.\DISPLAY1",
+        "Stale-index path would pick DISPLAY1 after reorder (race demonstration)");
+
+    var fixedResolve = DisplayManager.ResolvePrimaryByDeviceName(orderB, @"\\.\DISPLAY2");
+    Check(fixedResolve.DeviceName == @"\\.\DISPLAY2",
+        "Device-name resolve picks DISPLAY2 from reordered snapshot");
+
+    var getCalls = 0;
+    var dryManager = new DisplayManager(() =>
+    {
+        getCalls++;
+        // First call: order A. Any second call returns reordered B (would break stale-index code).
+        return getCalls == 1 ? orderA : orderB;
+    })
+    {
+        DryRun = true,
+    };
+
+    var byDevice = dryManager.SetPrimaryByDeviceName(@"\\.\DISPLAY2");
+    Check(byDevice.DeviceName == @"\\.\DISPLAY2",
+        "SetPrimaryByDeviceName dry-run targets DISPLAY2 despite reorder-capable provider");
+    Check(dryManager.LastDryRunPrimaryTarget?.DeviceName == @"\\.\DISPLAY2",
+        "Dry-run records DISPLAY2 as primary target");
+    Check(getCalls == 1,
+        "SetPrimaryByDeviceName uses a single GetMonitors snapshot (no re-enumeration)");
+
+    getCalls = 0;
+    var cycleManager = new DisplayManager(() =>
+    {
+        getCalls++;
+        return getCalls == 1 ? orderA : orderB;
+    })
+    {
+        DryRun = true,
+    };
+    var cycled = cycleManager.CyclePrimary();
+    Check(cycled.DeviceName == @"\\.\DISPLAY2",
+        "CyclePrimary dry-run advances to DISPLAY2 from single snapshot");
+    Check(getCalls == 1, "CyclePrimary uses a single GetMonitors snapshot");
+
+    getCalls = 0;
+    var swapManager = new DisplayManager(() =>
+    {
+        getCalls++;
+        return getCalls == 1 ? orderA : orderB;
+    })
+    {
+        DryRun = true,
+    };
+    var swapped = swapManager.SwapPrimaryBetweenTwoMonitors();
+    Check(swapped.DeviceName == @"\\.\DISPLAY2",
+        "SwapPrimaryBetweenTwoMonitors dry-run targets non-primary by device name");
+    Check(getCalls == 1, "SwapPrimaryBetweenTwoMonitors uses a single GetMonitors snapshot");
+}
+
+// ─────────────────── LayoutPreset false-restore messaging ───────────────────
+Console.WriteLine("\n== LayoutPreset rollback messaging ==");
+{
+    var missingScene = new LayoutPreset
+    {
+        Name = "Missing display",
+        PrimaryMonitorDeviceName = @"\\.\DISPLAY999",
+        MonitorStates =
+        {
+            [@"\\.\DISPLAY999"] = new DisplaySceneMonitorState
+            {
+                Width = 1920,
+                Height = 1080,
+                RefreshRateHz = 60,
+                PositionX = 0,
+                PositionY = 0,
+                Orientation = 0,
+            },
+        },
+    };
+    var failResult = LayoutPresetService.TryApply(missingScene, new AppSettings(), manager);
+    Check(!failResult.Applied, "TryApply fails when scene primary is disconnected");
+    Check(failResult.Message.Contains("were not restored", StringComparison.OrdinalIgnoreCase),
+        "Failed apply without rollback does not claim settings were restored");
+    Check(!failResult.Message.Contains("were restored.", StringComparison.Ordinal),
+        "Failed apply message omits false 'were restored' claim");
+}
+
 if (count >= 2)
 {
     foreach (var monitor in monitors)

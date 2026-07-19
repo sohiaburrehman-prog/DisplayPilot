@@ -100,6 +100,7 @@ public static class LayoutPresetService
         catch (Exception applyError)
         {
             var rollbackErrors = new List<string>();
+            var rollbackSucceeded = false;
             if (rollback?.MonitorStates.Count > 0 && !string.IsNullOrWhiteSpace(rollback.PrimaryMonitorDeviceName))
             {
                 try
@@ -108,6 +109,7 @@ public static class LayoutPresetService
                         rollback.MonitorStates,
                         rollback.PrimaryMonitorDeviceName);
                     ApplyHdrStates(rollback.MonitorStates, displayManager);
+                    rollbackSucceeded = true;
                 }
                 catch (Exception rollbackError)
                 {
@@ -115,9 +117,12 @@ public static class LayoutPresetService
                 }
             }
 
-            var rollbackSummary = rollbackErrors.Count == 0
+            // Only claim restore when a rollback snapshot actually ran successfully.
+            var rollbackSummary = rollbackSucceeded
                 ? "Original display settings were restored."
-                : $"Rollback also failed: {string.Join("; ", rollbackErrors)}";
+                : rollbackErrors.Count > 0
+                    ? $"Rollback also failed: {string.Join("; ", rollbackErrors)}"
+                    : "Original display settings were not restored.";
             var message = $"{applyError.Message} {rollbackSummary}";
             AppLogger.Log($"Display scene apply failed [{scene?.Name}]: {message}");
             return new ApplyResult { Message = message };

@@ -4,6 +4,16 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+## [1.8.2] — 2026-07-19
+
+### Fixed
+- **Primary-by-device race** — `SetPrimaryByDeviceName`, `CyclePrimary`, and dual-monitor swap now resolve and apply against a single monitor snapshot (by device name), so a re-enumeration cannot pick the wrong display under hotplug churn
+- **Scene apply failure messaging** — failed scene applies no longer claim “Original display settings were restored” unless a rollback snapshot actually ran successfully
+- **Process watcher deferred poll** — when a poll is already running, timer/WMI/resume requests set a `_pollAgain` flag so the next reconcile is not dropped for a full interval
+
+### Changed
+- **CI** — PRs and tag/release builds run `MonitorLogicTest` before publish; release fails if tests fail
+
 ## [1.8.1] — 2026-07-19
 
 ### Added

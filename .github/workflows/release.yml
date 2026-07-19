@@ -28,6 +28,10 @@ jobs:
         run: dotnet build -c Release
         shell: pwsh
 
+      - name: MonitorLogicTest
+        run: dotnet run --project tools/MonitorLogicTest/MonitorLogicTest.csproj -c Release
+        shell: pwsh
+
       - name: Publish framework-dependent
         run: dotnet publish -c Release -p:PublishProfile=FolderProfile
         shell: pwsh

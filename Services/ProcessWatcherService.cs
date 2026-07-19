@@ -36,6 +36,7 @@ public sealed class ProcessWatcherService : IDisposable
     private System.Threading.Timer? _timer;
     private ManagementEventWatcher? _startWatcher;
     private bool _polling;
+    private bool _pollAgain;
     private bool _disposed;
     private volatile bool _forceReconcile;
 
@@ -335,8 +336,16 @@ public sealed class ProcessWatcherService : IDisposable
     {
         lock (_lock)
         {
-            if (_polling || _disposed)
+            if (_disposed)
             {
+                return;
+            }
+
+            if (_polling)
+            {
+                // Another poll is in flight (timer / WMI / resume). Re-run once it finishes
+                // so short-lived processes and force-reconcile are not dropped for a full interval.
+                _pollAgain = true;
                 return;
             }
 
@@ -444,9 +453,20 @@ public sealed class ProcessWatcherService : IDisposable
         }
         finally
         {
+            var runAgain = false;
             lock (_lock)
             {
                 _polling = false;
+                if (_pollAgain && !_disposed)
+                {
+                    _pollAgain = false;
+                    runAgain = true;
+                }
+            }
+
+            if (runAgain)
+            {
+                ThreadPool.QueueUserWorkItem(_ => Poll());
             }
         }
     }

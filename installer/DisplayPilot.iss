@@ -2,7 +2,7 @@
 ; Build: ISCC DisplayPilot.iss  (from the installer\ folder)
 
 #define MyAppName "DisplayPilot"
-#define MyAppVersion "1.8.1"
+#define MyAppVersion "1.8.2"
 #define MyAppPublisher "Sohiab Rehman"
 #define MyAppSupportEmail "sohiab.rehman@pm.me"
 #define MyAppExeName "DisplayPilot.exe"

@@ -18,8 +18,31 @@ namespace PrimaryDisplaySwap.Services;
 /// </summary>
 public sealed class DisplayManager
 {
+    private readonly Func<IReadOnlyList<MonitorInfo>>? _monitorsProvider;
+
+    public DisplayManager()
+    {
+    }
+
+    /// <summary>Test seam: inject monitor snapshots so resolve/apply never crosses a re-enumeration.</summary>
+    internal DisplayManager(Func<IReadOnlyList<MonitorInfo>> monitorsProvider)
+    {
+        _monitorsProvider = monitorsProvider ?? throw new ArgumentNullException(nameof(monitorsProvider));
+    }
+
+    /// <summary>When true, set-primary resolves the target but does not call Win32 display APIs.</summary>
+    internal bool DryRun { get; set; }
+
+    /// <summary>Last monitor selected by a dry-run set-primary / cycle / swap.</summary>
+    internal MonitorInfo? LastDryRunPrimaryTarget { get; private set; }
+
     public IReadOnlyList<MonitorInfo> GetMonitors()
     {
+        if (_monitorsProvider is not null)
+        {
+            return _monitorsProvider();
+        }
+
         var (friendlyNames, configBounds) = GetDisplayConfigDetails();
         var monitors = new List<MonitorInfo>();
 
@@ -87,9 +110,80 @@ public sealed class DisplayManager
             throw new ArgumentOutOfRangeException(nameof(monitorIndex));
         }
 
-        var target = monitors[monitorIndex];
+        return SetPrimaryFromSnapshot(monitors, monitors[monitorIndex].DeviceName);
+    }
+
+    /// <summary>With exactly two monitors, makes the non-primary one primary. Returns the new primary.</summary>
+    public MonitorInfo SwapPrimaryBetweenTwoMonitors()
+    {
+        var monitors = GetMonitors();
+        if (monitors.Count != 2)
+        {
+            throw new InvalidOperationException("Quick swap is only available with exactly two monitors.");
+        }
+
+        var nonPrimary = monitors.First(m => !m.IsPrimary);
+        return SetPrimaryFromSnapshot(monitors, nonPrimary.DeviceName);
+    }
+
+    /// <summary>
+    /// Makes the monitor with the given GDI device name primary. Used by
+    /// auto-swap profiles. Throws if the device is not currently connected.
+    /// Resolves and applies against a single GetMonitors snapshot (no stale index).
+    /// </summary>
+    public MonitorInfo SetPrimaryByDeviceName(string deviceName)
+    {
+        var monitors = GetMonitors();
+        return SetPrimaryFromSnapshot(monitors, deviceName);
+    }
+
+    /// <summary>
+    /// Cycles the primary display to the next monitor in index order. With a
+    /// single monitor this is a no-op (returns it unchanged).
+    /// </summary>
+    public MonitorInfo CyclePrimary()
+    {
+        var monitors = GetMonitors();
+        if (monitors.Count <= 1)
+        {
+            throw new InvalidOperationException("Only one monitor is connected — nothing to cycle.");
+        }
+
+        var currentPrimaryIndex = monitors
+            .Select((m, i) => (m, i))
+            .FirstOrDefault(t => t.m.IsPrimary).i;
+
+        var next = (currentPrimaryIndex + 1) % monitors.Count;
+        return SetPrimaryFromSnapshot(monitors, monitors[next].DeviceName);
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="deviceName"/> inside <paramref name="monitors"/> and
+    /// applies primary change using that same snapshot. Never re-enumerates by index.
+    /// </summary>
+    internal MonitorInfo SetPrimaryFromSnapshot(IReadOnlyList<MonitorInfo> monitors, string deviceName)
+    {
+        ArgumentNullException.ThrowIfNull(monitors);
+
+        if (monitors.Count <= 1)
+        {
+            throw new InvalidOperationException("Only one monitor is connected — nothing to swap.");
+        }
+
+        var target = ResolvePrimaryByDeviceName(monitors, deviceName);
         if (target.IsPrimary)
         {
+            if (DryRun)
+            {
+                LastDryRunPrimaryTarget = target;
+            }
+
+            return target;
+        }
+
+        if (DryRun)
+        {
+            LastDryRunPrimaryTarget = target;
             return target;
         }
 
@@ -132,26 +226,11 @@ public sealed class DisplayManager
         throw new InvalidOperationException(lastError ?? "Could not set primary display.");
     }
 
-    /// <summary>With exactly two monitors, makes the non-primary one primary. Returns the new primary.</summary>
-    public MonitorInfo SwapPrimaryBetweenTwoMonitors()
+    /// <summary>Finds a connected monitor by GDI device name within one snapshot.</summary>
+    internal static MonitorInfo ResolvePrimaryByDeviceName(IReadOnlyList<MonitorInfo> monitors, string deviceName)
     {
-        var monitors = GetMonitors();
-        if (monitors.Count != 2)
-        {
-            throw new InvalidOperationException("Quick swap is only available with exactly two monitors.");
-        }
+        ArgumentNullException.ThrowIfNull(monitors);
 
-        var nonPrimary = monitors.First(m => !m.IsPrimary);
-        return SetPrimaryMonitor(nonPrimary.Index);
-    }
-
-    /// <summary>
-    /// Makes the monitor with the given GDI device name primary. Used by
-    /// auto-swap profiles. Throws if the device is not currently connected.
-    /// </summary>
-    public MonitorInfo SetPrimaryByDeviceName(string deviceName)
-    {
-        var monitors = GetMonitors();
         var target = monitors.FirstOrDefault(m =>
             string.Equals(m.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase));
 
@@ -160,27 +239,25 @@ public sealed class DisplayManager
             throw new InvalidOperationException($"Display {deviceName} is not currently connected.");
         }
 
-        return SetPrimaryMonitor(target.Index);
+        return target;
     }
 
     /// <summary>
-    /// Cycles the primary display to the next monitor in index order. With a
-    /// single monitor this is a no-op (returns it unchanged).
+    /// Demonstrates the pre-fix race: resolve index in snapshot A, then index into
+    /// snapshot B. Used by MonitorLogicTest to prove the stale-index failure mode.
     /// </summary>
-    public MonitorInfo CyclePrimary()
+    internal static MonitorInfo ResolvePrimaryByStaleIndex(
+        IReadOnlyList<MonitorInfo> resolveSnapshot,
+        IReadOnlyList<MonitorInfo> applySnapshot,
+        string deviceName)
     {
-        var monitors = GetMonitors();
-        if (monitors.Count <= 1)
+        var index = ResolvePrimaryByDeviceName(resolveSnapshot, deviceName).Index;
+        if (index < 0 || index >= applySnapshot.Count)
         {
-            throw new InvalidOperationException("Only one monitor is connected — nothing to cycle.");
+            throw new ArgumentOutOfRangeException(nameof(index));
         }
 
-        var currentPrimaryIndex = monitors
-            .Select((m, i) => (m, i))
-            .FirstOrDefault(t => t.m.IsPrimary).i;
-
-        var next = (currentPrimaryIndex + 1) % monitors.Count;
-        return SetPrimaryMonitor(next);
+        return applySnapshot[index];
     }
 
     /// <summary>
