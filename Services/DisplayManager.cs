@@ -100,14 +100,14 @@ public sealed class DisplayManager
     public MonitorInfo SetPrimaryMonitor(int monitorIndex)
     {
         var monitors = GetMonitors();
-        if (monitors.Count <= 1)
-        {
-            throw new InvalidOperationException("Only one monitor is connected — nothing to swap.");
-        }
-
         if (monitorIndex < 0 || monitorIndex >= monitors.Count)
         {
             throw new ArgumentOutOfRangeException(nameof(monitorIndex));
+        }
+
+        if (monitors.Count <= 1)
+        {
+            throw new InvalidOperationException("Only one monitor is connected — nothing to swap.");
         }
 
         return SetPrimaryFromSnapshot(monitors, monitors[monitorIndex].DeviceName);
