@@ -4,6 +4,16 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+## [1.8.1] — 2026-07-19
+
+### Added
+- **Compact tray menu** (default on) — shorter primary actions, nickname-only display lines, nested Auto-swap / More / Help; toggle under Settings → Appearance (`CompactTrayMenu`)
+- Settings schema upgraded to v8
+
+### Changed
+- Tray Swap accent colour applies only to the Swap action (not update or other rows)
+- Dense tray layout (full specs, previous structure) remains available when Compact tray menu is off
+
 ## [1.8.0] — 2026-07-18
 
 ### Added

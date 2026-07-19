@@ -128,29 +128,43 @@
                                 BorderBrush="{StaticResource HairlineBrush}"
                                 BorderThickness="1" CornerRadius="10"
                                 Padding="14,12" Margin="0,0,0,14">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Theme" FontSize="12.5"
-                                               Foreground="{StaticResource TextPrimaryBrush}" />
-                                    <TextBlock Text="System follows the Windows app theme and accent colour."
-                                               FontSize="11" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextMutedBrush}"
-                                               Margin="0,2,12,0" />
-                                </StackPanel>
-                                <ComboBox x:Name="ThemeCombo" Grid.Column="1"
-                                          Style="{StaticResource DarkComboBox}"
-                                          Width="135" VerticalAlignment="Center"
-                                          AutomationProperties.Name="Theme"
-                                          SelectionChanged="Theme_Changed">
-                                    <ComboBoxItem Content="System" />
-                                    <ComboBoxItem Content="Dark" />
-                                    <ComboBoxItem Content="Light" />
-                                </ComboBox>
-                            </Grid>
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Theme" FontSize="12.5"
+                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <TextBlock Text="System follows the Windows app theme and accent colour."
+                                                   FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   Margin="0,2,12,0" />
+                                    </StackPanel>
+                                    <ComboBox x:Name="ThemeCombo" Grid.Column="1"
+                                              Style="{StaticResource DarkComboBox}"
+                                              Width="135" VerticalAlignment="Center"
+                                              AutomationProperties.Name="Theme"
+                                              SelectionChanged="Theme_Changed">
+                                        <ComboBoxItem Content="System" />
+                                        <ComboBoxItem Content="Dark" />
+                                        <ComboBoxItem Content="Light" />
+                                    </ComboBox>
+                                </Grid>
+                                <CheckBox x:Name="CompactTrayMenuCheck"
+                                          Style="{StaticResource DarkCheckBox}"
+                                          Content="Compact tray menu"
+                                          Foreground="{StaticResource TextPrimaryBrush}"
+                                          Margin="0,14,0,0"
+                                          AutomationProperties.HelpText="Shorter tray menu with nickname-only display lines and nested Auto-swap controls. Turn off for the denser power-user layout."
+                                          Checked="CompactTrayMenu_Changed"
+                                          Unchecked="CompactTrayMenu_Changed" />
+                                <TextBlock Text="Shorter tray menu by default. Turn off to restore full display specs and the denser layout."
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           Margin="27,2,0,0" />
+                            </StackPanel>
                         </Border>
 
                         <TextBlock Text="UPDATES"

@@ -89,6 +89,7 @@ public partial class SettingsWindow : Window
         CycleCapture.IsEnabled = _settings.Current.CyclePrimaryHotkey.Enabled;
         AutoUpdateCheck.IsChecked = _settings.Current.AutoUpdateCheckEnabled;
         ThemeCombo.SelectedIndex = (int)_settings.Current.Theme;
+        CompactTrayMenuCheck.IsChecked = _settings.Current.CompactTrayMenu;
 
         _suppressToggleEvents = false;
     }
@@ -126,6 +127,20 @@ public partial class SettingsWindow : Window
         var choice = (ThemePreference)Math.Clamp(ThemeCombo.SelectedIndex, 0, 2);
         _settings.Update(s => s.Theme = choice);
         // App subscribes to settings changes and re-applies the theme live.
+    }
+
+    private void CompactTrayMenu_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        var compact = CompactTrayMenuCheck.IsChecked == true;
+        _settings.Update(s => s.CompactTrayMenu = compact);
+        SetStatus(compact
+            ? "Compact tray menu enabled."
+            : "Dense tray menu restored.");
     }
 
     private void OpenProfileManager_Click(object sender, RoutedEventArgs e) =>

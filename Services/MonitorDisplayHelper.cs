@@ -22,10 +22,18 @@ public static class MonitorDisplayHelper
     public static string GetNumberedName(MonitorInfo monitor, AppSettings settings) =>
         $"{monitor.Index + 1} · {GetDisplayName(monitor, settings)}";
 
-    public static string GetTrayMenuLine(MonitorInfo monitor, AppSettings settings) =>
-        monitor.IsPrimary
+    public static string GetTrayMenuLine(MonitorInfo monitor, AppSettings settings, bool compact = false)
+    {
+        if (compact)
+        {
+            var name = GetDisplayName(monitor, settings);
+            return monitor.IsPrimary ? $"✓ {name}" : name;
+        }
+
+        return monitor.IsPrimary
             ? $"✓ {GetNumberedName(monitor, settings)}  —  {monitor.SpecsLabel}  ·  Primary"
             : $"   {GetNumberedName(monitor, settings)}  —  {monitor.SpecsLabel}";
+    }
 
     public static string GetMapTooltip(MonitorInfo monitor, AppSettings settings)
     {

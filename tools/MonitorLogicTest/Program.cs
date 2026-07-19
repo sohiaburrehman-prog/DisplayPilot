@@ -335,6 +335,13 @@ Check(MonitorDisplayHelper.GetDisplayName(dual[1], nicknameSettings) == "Gaming 
     "Nickname overrides hardware name");
 Check(MonitorDisplayHelper.GetNumberedName(dual[1], nicknameSettings) == "2 · Gaming screen",
     "Numbered name uses nickname");
+nicknameSettings.MonitorNicknames[@"\\.\DISPLAY2"] = "Gaming screen";
+Check(MonitorDisplayHelper.GetTrayMenuLine(dual[1], nicknameSettings, compact: true) == "Gaming screen",
+    "Compact tray line uses nickname without specs");
+var primaryCompact = dual.First(m => m.IsPrimary);
+Check(MonitorDisplayHelper.GetTrayMenuLine(primaryCompact, nicknameSettings, compact: true)
+        .StartsWith('✓'),
+    "Compact primary tray line is checkmarked");
 nicknameSettings.MonitorNicknames.Remove(@"\\.\DISPLAY2");
 Check(MonitorDisplayHelper.GetDisplayName(dual[1], nicknameSettings) == dual[1].Name,
     "Removing nickname falls back to hardware name");
@@ -482,14 +489,21 @@ Check(restored.Profiles[0].Priority == 25, "Profile priority survives JSON round
 Check(restored.ProfileConflictRule == ProfileConflictRule.MostRecentlyActivated,
     "Profile conflict rule survives JSON round-trip");
 
-// ─────────────────── Schema v7: scene profiles, constraints & migration ───────────────────
-Console.WriteLine("\n== Schema v7: scene profiles & richer profile matching ==");
-Check(AppSettings.CurrentSchemaVersion == 7, "Current schema version is 7");
+// ─────────────────── Schema v8: compact tray + scene profiles ───────────────────
+Console.WriteLine("\n== Schema v8: compact tray menu & scene profiles ==");
+Check(AppSettings.CurrentSchemaVersion == 8, "Current schema version is 8");
+Check(new AppSettings().CompactTrayMenu, "CompactTrayMenu defaults to true");
+var compactOff = new AppSettings { CompactTrayMenu = false };
+var compactRoundTrip = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(compactOff));
+Check(compactRoundTrip?.CompactTrayMenu == false, "CompactTrayMenu=false survives JSON round-trip");
+Check(JsonSerializer.Deserialize<AppSettings>("{\"SchemaVersion\":8}")?.CompactTrayMenu == true,
+    "Missing CompactTrayMenu in JSON keeps default true");
 
 var v4Settings = new AppSettings { SchemaVersion = 3 };
 v4Settings.Profiles.Add(gameProfile.Clone());
 SettingsService.TryParseImport(JsonSerializer.Serialize(v4Settings), out var migrated, out _);
-Check(migrated?.SchemaVersion == 7, "Import normalizes schema to v7");
+Check(migrated?.SchemaVersion == 8, "Import normalizes schema to v8");
+Check(migrated?.CompactTrayMenu == true, "Migrated settings keep CompactTrayMenu default");
 Check(migrated?.LayoutPresets is not null && migrated.LayoutPresets.Count == 0, "LayoutPresets initialized on migrate");
 
 var preset = LayoutPresetService.CaptureCurrent("Desk", manager);
@@ -511,7 +525,7 @@ invalidScene.MonitorStates.First().Value.Orientation = 9;
 Check(!LayoutPresetService.TryNormalizeImported(invalidScene, out var invalidSceneError) && invalidSceneError is not null,
     "Scene import validation rejects an invalid orientation");
 
-v4Settings.SchemaVersion = 7;
+v4Settings.SchemaVersion = 8;
 v4Settings.LayoutPresets.Add(preset);
 v4Settings.Profiles[0].DisplaySceneId = preset.Id;
 v4Settings.LastUsedProfileId = gameProfile.Id;

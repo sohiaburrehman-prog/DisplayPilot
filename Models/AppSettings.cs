@@ -315,7 +315,7 @@ public sealed class AppSettings
     public const uint ModWin = 0x0008;
     public const uint VkM = 0x4D;
 
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -368,6 +368,14 @@ public sealed class AppSettings
     /// <summary>UI theme: follow Windows (default), or force Dark / Light.</summary>
     public ThemePreference Theme { get; set; } = ThemePreference.System;
 
+    /// <summary>
+    /// When true (default), the tray context menu uses a shorter layout:
+    /// primary actions up top, nickname-only display lines, and nested
+    /// Auto-swap / More / Help submenus. When false, the denser power-user
+    /// layout with full specs and section headers is restored.
+    /// </summary>
+    public bool CompactTrayMenu { get; set; } = true;
+
     /// <summary>True once the one-time "we live in the tray" hint has been shown.</summary>
     public bool FirstRunTrayHintShown { get; set; }
 
@@ -376,6 +384,7 @@ public sealed class AppSettings
         SchemaVersion = SchemaVersion,
         FirstRunCompleted = FirstRunCompleted,
         Theme = Theme,
+        CompactTrayMenu = CompactTrayMenu,
         FirstRunTrayHintShown = FirstRunTrayHintShown,
         MonitorNicknames = new Dictionary<string, string>(MonitorNicknames),
         OpenPanelHotkey = OpenPanelHotkey.Clone(),

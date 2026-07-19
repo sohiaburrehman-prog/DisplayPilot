@@ -50,6 +50,7 @@ internal sealed class TrayService : IDisposable
         {
             Renderer = new DarkMenuRenderer(),
             ShowImageMargin = false,
+            ShowItemToolTips = true,
             Font = AppTheme.MenuBodyFont,
             Padding = new Padding(6, 8, 6, 8),
             AutoSize = true,
@@ -102,93 +103,186 @@ internal sealed class TrayService : IDisposable
         if (_updateInfo is not null)
         {
             var updateItem = CreateActionItem($"⬇  Update available — {_updateInfo.LatestTag}");
-            updateItem.Tag = TrayMenuTags.Swap;
             updateItem.Click += (_, _) => OpenUrl(_updateInfo.ReleaseUrl);
             _menu.Items.Add(updateItem);
             _menu.Items.Add(new ToolStripSeparator());
         }
-
-        var openItem = CreateActionItem("&Open control panel");
-        openItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
-        _menu.Items.Add(openItem);
 
         IReadOnlyList<MonitorInfo> monitors = Array.Empty<MonitorInfo>();
         try
         {
             monitors = _displayManager.GetMonitors();
             UpdateTrayTooltip(monitors);
-
-            if (monitors.Count > 0)
-            {
-                var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
-                _menu.Items.Add(CreateLabel(
-                    $"Primary: {MonitorDisplayHelper.GetDisplayName(primary, _settings.Current)}",
-                    TrayMenuTags.Status));
-            }
-
-            _menu.Items.Add(new ToolStripSeparator());
-            _menu.Items.Add(CreateLabel("DISPLAYS", TrayMenuTags.Section));
-
-            if (monitors.Count == 0)
-            {
-                _menu.Items.Add(CreateDisabled("No displays detected"));
-            }
-            else if (monitors.Count == 1)
-            {
-                var only = monitors[0];
-                _menu.Items.Add(CreateDisabled($"{MonitorDisplayHelper.GetNumberedName(only, _settings.Current)}  —  {only.SpecsLabel}"));
-                _menu.Items.Add(CreateDisabled("Connect another display to swap"));
-            }
-            else
-            {
-                foreach (var monitor in monitors)
-                {
-                    AddMonitorItem(monitor, monitors.Count > 2);
-                }
-            }
         }
         catch (Exception ex)
         {
-            _menu.Items.Add(new ToolStripSeparator());
-            _menu.Items.Add(CreateLabel("DISPLAYS", TrayMenuTags.Section));
-            _menu.Items.Add(CreateDisabled($"Error: {ex.Message}"));
+            AppLogger.Log($"Tray menu monitor query failed: {ex.Message}");
         }
 
-        AddQuickActionsSection(monitors);
-
-        AddProfilesSection();
-
-        _menu.Items.Add(new ToolStripSeparator());
-
-        var settingsItem = CreateActionItem("&Settings…");
-        settingsItem.Click += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
-        _menu.Items.Add(settingsItem);
-
-        var logItem = CreateActionItem("View &activity log…");
-        logItem.Click += (_, _) => ViewLogRequested?.Invoke(this, EventArgs.Empty);
-        _menu.Items.Add(logItem);
-
-        _menu.Items.Add(new ToolStripSeparator());
-
-        var startupItem = CreateActionItem("Start with &Windows");
-        startupItem.Checked = _startupService.IsEnabled;
-        startupItem.Click += (_, _) => ToggleStartup(startupItem);
-        _menu.Items.Add(startupItem);
-
-        _menu.Items.Add(new ToolStripSeparator());
-
-        var legalMenu = CreateActionItem("Legal && policies");
-        legalMenu.DropDown = BuildLegalSubmenu();
-        _menu.Items.Add(legalMenu);
-
-        _menu.Items.Add(new ToolStripSeparator());
-
-        var exitItem = CreateActionItem("E&xit DisplayPilot");
-        exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
-        _menu.Items.Add(exitItem);
+        if (_settings.Current.CompactTrayMenu)
+        {
+            BuildCompactMenu(monitors);
+        }
+        else
+        {
+            BuildDenseMenu(monitors);
+        }
     }
 
-    private void AddQuickActionsSection(IReadOnlyList<MonitorInfo> monitors)
+    /// <summary>Default compact tray layout — short primary actions, nested utilities.</summary>
+    private void BuildCompactMenu(IReadOnlyList<MonitorInfo> monitors)
+    {
+        var openItem = CreateActionItem("&Open control panel");
+        openItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(openItem);
+
+        if (monitors.Count == 2)
+        {
+            AddSwapAction(monitors, compact: true);
+        }
+
+        var lastProfile = GetLastUsedProfile();
+        if (lastProfile is not null)
+        {
+            var reapplyItem = CreateActionItem($"Apply {lastProfile.DisplayLabel}");
+            reapplyItem.ToolTipText = $"Re-apply last profile ({lastProfile.DisplayLabel})";
+            reapplyItem.Click += (_, _) => ApplyProfile(lastProfile);
+            _menu.Items.Add(reapplyItem);
+        }
+
+        var moreMenu = BuildMoreSubmenu(monitors);
+        if (moreMenu.Items.Count > 0)
+        {
+            var moreItem = CreateActionItem("&More…");
+            moreItem.DropDown = moreMenu;
+            _menu.Items.Add(moreItem);
+        }
+        else
+        {
+            moreMenu.Dispose();
+        }
+
+        _menu.Items.Add(new ToolStripSeparator());
+        AddDisplaysSection(monitors, compact: true);
+
+        _menu.Items.Add(new ToolStripSeparator());
+        AddCompactAutoSwapItem();
+
+        if (monitors.Count >= 2)
+        {
+            var projectionItem = CreateActionItem("Screen &projection");
+            projectionItem.DropDown = BuildProjectionSubmenu();
+            _menu.Items.Add(projectionItem);
+        }
+
+        AddBottomUtilities(compact: true);
+    }
+
+    /// <summary>Legacy dense layout for power users (CompactTrayMenu = false).</summary>
+    private void BuildDenseMenu(IReadOnlyList<MonitorInfo> monitors)
+    {
+        var openItem = CreateActionItem("&Open control panel");
+        openItem.Click += (_, _) => ShowPanelRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(openItem);
+
+        if (monitors.Count > 0)
+        {
+            var primary = monitors.FirstOrDefault(m => m.IsPrimary) ?? monitors[0];
+            _menu.Items.Add(CreateLabel(
+                $"Primary: {MonitorDisplayHelper.GetDisplayName(primary, _settings.Current)}",
+                TrayMenuTags.Status));
+        }
+
+        _menu.Items.Add(new ToolStripSeparator());
+        AddDisplaysSection(monitors, compact: false);
+
+        AddDenseQuickActionsSection(monitors);
+        AddDenseProfilesSection();
+        AddBottomUtilities(compact: false);
+    }
+
+    private void AddDisplaysSection(IReadOnlyList<MonitorInfo> monitors, bool compact)
+    {
+        if (!compact)
+        {
+            _menu.Items.Add(CreateLabel("DISPLAYS", TrayMenuTags.Section));
+        }
+
+        if (monitors.Count == 0)
+        {
+            _menu.Items.Add(CreateDisabled("No displays detected"));
+            return;
+        }
+
+        if (monitors.Count == 1)
+        {
+            var only = monitors[0];
+            if (compact)
+            {
+                _menu.Items.Add(CreateDisabled(
+                    MonitorDisplayHelper.GetTrayMenuLine(only, _settings.Current, compact: true)));
+            }
+            else
+            {
+                _menu.Items.Add(CreateDisabled(
+                    $"{MonitorDisplayHelper.GetNumberedName(only, _settings.Current)}  —  {only.SpecsLabel}"));
+                _menu.Items.Add(CreateDisabled("Connect another display to swap"));
+            }
+
+            return;
+        }
+
+        foreach (var monitor in monitors)
+        {
+            AddMonitorItem(monitor, showSetPrimaryHint: !compact && monitors.Count > 2, compact);
+        }
+    }
+
+    private ContextMenuStrip BuildMoreSubmenu(IReadOnlyList<MonitorInfo> monitors)
+    {
+        var menu = CreateSubmenu();
+
+        if (monitors.Count >= 2)
+        {
+            var cyclePrimaryItem = CreateActionItem("Cycle &primary display");
+            cyclePrimaryItem.Click += (_, _) => CyclePrimaryRequested?.Invoke(this, EventArgs.Empty);
+            menu.Items.Add(cyclePrimaryItem);
+        }
+
+        var scenes = _settings.Current.LayoutPresets;
+        if (scenes.Count > 0)
+        {
+            var sceneMenu = CreateActionItem("Apply display &scene");
+            foreach (var scene in scenes)
+            {
+                var captured = scene;
+                var item = CreateActionItem(captured.Name);
+                item.Click += (_, _) => ApplyScene(captured);
+                sceneMenu.DropDownItems.Add(item);
+            }
+
+            menu.Items.Add(sceneMenu);
+        }
+
+        var enabledProfiles = _settings.Current.Profiles.Where(p => p.Enabled).ToList();
+        if (enabledProfiles.Count > 0)
+        {
+            var applyMenu = CreateActionItem("Apply &profile");
+            foreach (var profile in enabledProfiles)
+            {
+                var captured = profile;
+                var item = CreateActionItem(captured.DisplayLabel);
+                item.Click += (_, _) => ApplyProfile(captured);
+                applyMenu.DropDownItems.Add(item);
+            }
+
+            menu.Items.Add(applyMenu);
+        }
+
+        return menu;
+    }
+
+    private void AddDenseQuickActionsSection(IReadOnlyList<MonitorInfo> monitors)
     {
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(CreateLabel("QUICK ACTIONS", TrayMenuTags.Section));
@@ -203,7 +297,7 @@ internal sealed class TrayService : IDisposable
         }
         else if (monitors.Count == 2)
         {
-            AddSwapAction(monitors);
+            AddSwapAction(monitors, compact: false);
         }
 
         if (monitors.Count >= 2)
@@ -236,6 +330,7 @@ internal sealed class TrayService : IDisposable
                 item.Click += (_, _) => ApplyScene(captured);
                 sceneMenu.DropDownItems.Add(item);
             }
+
             _menu.Items.Add(sceneMenu);
         }
 
@@ -256,6 +351,45 @@ internal sealed class TrayService : IDisposable
         }
 
         _menu.Items.Add(applyMenu);
+    }
+
+    private void AddBottomUtilities(bool compact)
+    {
+        _menu.Items.Add(new ToolStripSeparator());
+
+        var settingsItem = CreateActionItem("&Settings…");
+        settingsItem.Click += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(settingsItem);
+
+        var logItem = CreateActionItem(compact ? "&Log…" : "View &activity log…");
+        logItem.Click += (_, _) => ViewLogRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(logItem);
+
+        var startupItem = CreateActionItem("Start with &Windows");
+        startupItem.Checked = _startupService.IsEnabled;
+        startupItem.Click += (_, _) => ToggleStartup(startupItem);
+        _menu.Items.Add(startupItem);
+
+        _menu.Items.Add(new ToolStripSeparator());
+
+        if (compact)
+        {
+            var helpItem = CreateActionItem("&Help");
+            helpItem.DropDown = BuildHelpSubmenu();
+            _menu.Items.Add(helpItem);
+        }
+        else
+        {
+            var legalMenu = CreateActionItem("Legal && policies");
+            legalMenu.DropDown = BuildDenseLegalSubmenu();
+            _menu.Items.Add(legalMenu);
+        }
+
+        _menu.Items.Add(new ToolStripSeparator());
+
+        var exitItem = CreateActionItem(compact ? "E&xit" : "E&xit DisplayPilot");
+        exitItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
+        _menu.Items.Add(exitItem);
     }
 
     private void ApplyScene(LayoutPreset scene)
@@ -346,7 +480,7 @@ internal sealed class TrayService : IDisposable
         });
     }
 
-    private void AddProfilesSection()
+    private void AddDenseProfilesSection()
     {
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(CreateLabel("AUTO-SWAP", TrayMenuTags.Section));
@@ -370,7 +504,34 @@ internal sealed class TrayService : IDisposable
         profilesItem.Click += (_, _) => ProfilesRequested?.Invoke(this, EventArgs.Empty);
         _menu.Items.Add(profilesItem);
 
-        AddPauseItems(paused);
+        AddPauseItems(_menu.Items, paused);
+    }
+
+    /// <summary>
+    /// Compact root row: one Auto-swap line with Manage / Pause / Resume nested.
+    /// </summary>
+    private void AddCompactAutoSwapItem()
+    {
+        var profiles = _settings.Current.Profiles;
+        var paused = _processWatcher?.IsPaused == true;
+        var count = profiles.Count;
+        var rootLabel = paused
+            ? $"Auto-swap · Paused {_processWatcher!.PauseLabel ?? "until resumed"}"
+            : count == 0
+                ? "Auto-swap · No profiles"
+                : $"Auto-swap · {count} profile{(count == 1 ? "" : "s")}";
+
+        var autoSwapItem = CreateActionItem(rootLabel);
+        var submenu = CreateSubmenu();
+
+        var manageLabel = count == 0 ? "&Add game profile…" : "&Manage profiles…";
+        var manageItem = CreateActionItem(manageLabel);
+        manageItem.Click += (_, _) => ProfilesRequested?.Invoke(this, EventArgs.Empty);
+        submenu.Items.Add(manageItem);
+
+        AddPauseItems(submenu.Items, paused);
+        autoSwapItem.DropDown = submenu;
+        _menu.Items.Add(autoSwapItem);
     }
 
     /// <summary>
@@ -378,7 +539,7 @@ internal sealed class TrayService : IDisposable
     /// reacting to process starts/exits without touching profile enablement —
     /// useful when a profile misfires during normal desktop use.
     /// </summary>
-    private void AddPauseItems(bool paused)
+    private void AddPauseItems(ToolStripItemCollection items, bool paused)
     {
         if (_processWatcher is null)
         {
@@ -389,18 +550,12 @@ internal sealed class TrayService : IDisposable
         {
             var resumeItem = CreateActionItem("▶  &Resume auto-swap");
             resumeItem.Click += (_, _) => _processWatcher.ResumeAutoSwap();
-            _menu.Items.Add(resumeItem);
+            items.Add(resumeItem);
             return;
         }
 
         var pauseItem = CreateActionItem("⏸  &Pause auto-swap");
-        var pauseMenu = new ContextMenuStrip
-        {
-            Renderer = new DarkMenuRenderer(),
-            ShowImageMargin = false,
-            Font = AppTheme.MenuBodyFont,
-            Padding = new Padding(4, 6, 4, 6),
-        };
+        var pauseMenu = CreateSubmenu();
 
         var pause30 = CreateActionItem("For 30 minutes");
         pause30.Click += (_, _) => _processWatcher.PauseAutoSwap(TimeSpan.FromMinutes(30));
@@ -415,28 +570,32 @@ internal sealed class TrayService : IDisposable
         pauseMenu.Items.Add(pauseIndefinite);
 
         pauseItem.DropDown = pauseMenu;
-        _menu.Items.Add(pauseItem);
+        items.Add(pauseItem);
     }
 
-    private void AddSwapAction(IReadOnlyList<MonitorInfo> monitors)
+    private void AddSwapAction(IReadOnlyList<MonitorInfo> monitors, bool compact)
     {
         var primary = monitors.First(m => m.IsPrimary);
         var other = monitors.First(m => !m.IsPrimary);
         var primaryName = MonitorDisplayHelper.GetDisplayName(primary, _settings.Current);
         var otherName = MonitorDisplayHelper.GetDisplayName(other, _settings.Current);
-        var swapText = $"⇄  Swap: {primary.Index + 1} ↔ {other.Index + 1}  ({primaryName} ↔ {otherName})";
+
+        var swapText = compact
+            ? $"⇄ Swap {other.Index + 1} ↔ {primary.Index + 1}"
+            : $"⇄  Swap: {primary.Index + 1} ↔ {other.Index + 1}  ({primaryName} ↔ {otherName})";
 
         var swapItem = CreateActionItem(swapText);
         swapItem.Tag = TrayMenuTags.Swap;
         swapItem.Padding = new Padding(8, 6, 8, 6);
         swapItem.ShortcutKeyDisplayString = "S";
+        swapItem.ToolTipText = $"{primaryName} ↔ {otherName}";
         swapItem.Click += (_, _) => SwapPrimary();
         _menu.Items.Add(swapItem);
     }
 
-    private void AddMonitorItem(MonitorInfo monitor, bool showSetPrimaryHint)
+    private void AddMonitorItem(MonitorInfo monitor, bool showSetPrimaryHint, bool compact)
     {
-        var label = MonitorDisplayHelper.GetTrayMenuLine(monitor, _settings.Current);
+        var label = MonitorDisplayHelper.GetTrayMenuLine(monitor, _settings.Current, compact);
         if (!monitor.IsPrimary && showSetPrimaryHint)
         {
             label += "  —  click to set primary";
@@ -444,6 +603,14 @@ internal sealed class TrayService : IDisposable
 
         var item = CreateActionItem(label);
         item.Enabled = !monitor.IsPrimary;
+        if (compact && !monitor.IsPrimary)
+        {
+            item.ToolTipText = $"{monitor.SpecsLabel}  ·  click to set primary";
+        }
+        else if (compact && monitor.IsPrimary)
+        {
+            item.ToolTipText = $"{monitor.SpecsLabel}  ·  Primary";
+        }
 
         if (!monitor.IsPrimary)
         {
@@ -455,27 +622,42 @@ internal sealed class TrayService : IDisposable
         _menu.Items.Add(item);
     }
 
-    private static ContextMenuStrip BuildLegalSubmenu()
+    private static ContextMenuStrip CreateSubmenu() => new()
     {
-        var menu = new ContextMenuStrip
-        {
-            Renderer = new DarkMenuRenderer(),
-            ShowImageMargin = false,
-            Font = AppTheme.MenuBodyFont,
-            Padding = new Padding(4, 6, 4, 6),
-        };
+        Renderer = new DarkMenuRenderer(),
+        ShowImageMargin = false,
+        ShowItemToolTips = true,
+        Font = AppTheme.MenuBodyFont,
+        Padding = new Padding(4, 6, 4, 6),
+    };
 
-        var eulaItem = CreateActionItem("End User License Agreement");
-        eulaItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.EulaTitle, LegalDocuments.LoadEula);
-        menu.Items.Add(eulaItem);
+    private static ContextMenuStrip BuildHelpSubmenu()
+    {
+        var menu = CreateSubmenu();
 
-        var privacyItem = CreateActionItem("Privacy Policy");
-        privacyItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.PrivacyTitle, LegalDocuments.LoadPrivacyPolicy);
-        menu.Items.Add(privacyItem);
+        var legalItem = CreateActionItem("Legal && policies");
+        legalItem.DropDown = BuildLegalDocumentsSubmenu();
+        menu.Items.Add(legalItem);
 
-        var noticesItem = CreateActionItem("Third-Party Notices");
-        noticesItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.ThirdPartyNoticesTitle, LegalDocuments.LoadThirdPartyNotices);
-        menu.Items.Add(noticesItem);
+        menu.Items.Add(new ToolStripSeparator());
+
+        var helpItem = CreateActionItem("Help && support");
+        helpItem.Click += (_, _) => ShowPolicySafely("Help & support", () => AppInfo.BuildHelpText());
+        menu.Items.Add(helpItem);
+
+        var aboutItem = CreateActionItem("About DisplayPilot");
+        aboutItem.Click += (_, _) => ShowPolicy(
+            "About",
+            BuildAboutText(),
+            $"Made by {AppInfo.AuthorName}");
+        menu.Items.Add(aboutItem);
+
+        return menu;
+    }
+
+    private static ContextMenuStrip BuildDenseLegalSubmenu()
+    {
+        var menu = BuildLegalDocumentsSubmenu();
 
         menu.Items.Add(new ToolStripSeparator());
 
@@ -491,6 +673,25 @@ internal sealed class TrayService : IDisposable
             BuildAboutText(),
             $"Made by {AppInfo.AuthorName}");
         menu.Items.Add(aboutItem);
+
+        return menu;
+    }
+
+    private static ContextMenuStrip BuildLegalDocumentsSubmenu()
+    {
+        var menu = CreateSubmenu();
+
+        var eulaItem = CreateActionItem("End User License Agreement");
+        eulaItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.EulaTitle, LegalDocuments.LoadEula);
+        menu.Items.Add(eulaItem);
+
+        var privacyItem = CreateActionItem("Privacy Policy");
+        privacyItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.PrivacyTitle, LegalDocuments.LoadPrivacyPolicy);
+        menu.Items.Add(privacyItem);
+
+        var noticesItem = CreateActionItem("Third-Party Notices");
+        noticesItem.Click += (_, _) => ShowPolicySafely(LegalDocuments.ThirdPartyNoticesTitle, LegalDocuments.LoadThirdPartyNotices);
+        menu.Items.Add(noticesItem);
 
         return menu;
     }
@@ -629,13 +830,7 @@ internal sealed class TrayService : IDisposable
 
     private ContextMenuStrip BuildProjectionSubmenu()
     {
-        var menu = new ContextMenuStrip
-        {
-            Renderer = new DarkMenuRenderer(),
-            ShowImageMargin = false,
-            Font = AppTheme.MenuBodyFont,
-            Padding = new Padding(4, 6, 4, 6),
-        };
+        var menu = CreateSubmenu();
 
         foreach (var mode in new[]
         {
