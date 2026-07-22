@@ -2,7 +2,7 @@
 ; Build: ISCC DisplayPilot.iss  (from the installer\ folder)
 
 #define MyAppName "DisplayPilot"
-#define MyAppVersion "1.8.2"
+#define MyAppVersion "1.8.3"
 #define MyAppPublisher "Sohiab Rehman"
 #define MyAppSupportEmail "sohiab.rehman@pm.me"
 #define MyAppExeName "DisplayPilot.exe"
@@ -33,6 +33,8 @@ SignedUninstaller=yes
 #endif
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppSupportURL=mailto:{#MyAppSupportEmail}
 DefaultDirName={localappdata}\DisplayPilot

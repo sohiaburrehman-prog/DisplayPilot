@@ -469,7 +469,7 @@ public partial class PanelWindow : Window
 
             screen.Child = labelStack;
 
-            var index = monitor.Index;
+            var deviceName = monitor.DeviceName;
             var displayName = MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current);
             var idleBrush = monitor.IsPrimary
                 ? (Brush)FindResource("ScreenGradientBrush")
@@ -477,7 +477,7 @@ public partial class PanelWindow : Window
 
             if (!monitor.IsPrimary)
             {
-                WireSetPrimaryActivation(screen, index, displayName);
+                WireSetPrimaryActivation(screen, deviceName, displayName);
             }
 
             screen.MouseEnter += (s, _) =>
@@ -1072,9 +1072,9 @@ public partial class PanelWindow : Window
 
         if (!monitor.IsPrimary)
         {
-            var index = monitor.Index;
+            var deviceName = monitor.DeviceName;
             var displayName = MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current);
-            WireSetPrimaryActivation(card, index, displayName);
+            WireSetPrimaryActivation(card, deviceName, displayName);
         }
 
         return card;
@@ -1084,7 +1084,7 @@ public partial class PanelWindow : Window
     /// Routes single- and double-clicks on monitor cards/map tiles to set-primary,
     /// while leaving the inline Rename hyperlink interactive.
     /// </summary>
-    private void WireSetPrimaryActivation(FrameworkElement target, int monitorIndex, string monitorName)
+    private void WireSetPrimaryActivation(FrameworkElement target, string deviceName, string monitorName)
     {
         async void Activate(object sender, MouseButtonEventArgs e)
         {
@@ -1099,7 +1099,7 @@ public partial class PanelWindow : Window
             }
 
             e.Handled = true;
-            await SetPrimaryAsync(monitorIndex, monitorName);
+            await SetPrimaryAsync(deviceName, monitorName);
         }
 
         target.PreviewMouseLeftButtonUp += Activate;
@@ -1116,7 +1116,7 @@ public partial class PanelWindow : Window
             }
 
             e.Handled = true;
-            _ = SetPrimaryAsync(monitorIndex, monitorName);
+            _ = SetPrimaryAsync(deviceName, monitorName);
         };
     }
 
@@ -1211,7 +1211,7 @@ public partial class PanelWindow : Window
         }
     }
 
-    private async Task SetPrimaryAsync(int monitorIndex, string monitorName)
+    private async Task SetPrimaryAsync(string deviceName, string monitorName)
     {
         if (_swapInProgress)
         {
@@ -1223,7 +1223,7 @@ public partial class PanelWindow : Window
             _swapInProgress = true;
             SetBusy(true, $"Making {monitorName} primary…");
 
-            var newPrimary = await Task.Run(() => _displayManager.SetPrimaryMonitor(monitorIndex));
+            var newPrimary = await Task.Run(() => _displayManager.SetPrimaryByDeviceName(deviceName));
 
             RefreshMonitors();
             PulsePrimaryTile();

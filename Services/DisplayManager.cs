@@ -446,14 +446,25 @@ public sealed class DisplayManager
             {
                 throw new InvalidOperationException($"Scene has an invalid orientation for {deviceName}.");
             }
+        }
 
-            var devMode = BuildSceneDevMode(deviceName, state);
-            var test = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CdsTest, IntPtr.Zero);
-            if (test != DispChangeSuccessful)
-            {
-                throw new InvalidOperationException(
-                    $"Scene settings are not supported on {deviceName} — {DescribeDispChange(test)}.");
-            }
+        if (!states.TryGetValue(primaryDeviceName, out var primaryState) ||
+            primaryState.PositionX != 0 || primaryState.PositionY != 0)
+        {
+            throw new InvalidOperationException("Scene primary display must be positioned at 0,0.");
+        }
+
+        var (paths, modes) = BuildDisplayConfigScene(states);
+        var validation = SetDisplayConfig(
+            (uint)paths.Length,
+            paths,
+            (uint)modes.Length,
+            modes,
+            SdcValidate | SdcUseSuppliedDisplayConfig | SdcAllowChanges);
+        if (validation != ErrorSuccess)
+        {
+            throw new InvalidOperationException(
+                $"Scene settings are not supported by the active display topology (Win32 error {validation}).");
         }
     }
 
@@ -467,53 +478,88 @@ public sealed class DisplayManager
     {
         TestDisplayScene(states, primaryDeviceName);
 
-        foreach (var (deviceName, state) in states)
+        var (paths, modes) = BuildDisplayConfigScene(states);
+        var applied = SetDisplayConfig(
+            (uint)paths.Length,
+            paths,
+            (uint)modes.Length,
+            modes,
+            SdcApply | SdcUseSuppliedDisplayConfig | SdcAllowChanges | SdcSaveToDatabase);
+        if (applied != ErrorSuccess)
         {
-            var devMode = BuildSceneDevMode(deviceName, state);
-            var flags = CdsUpdateRegistry | CdsNoReset;
-            if (string.Equals(deviceName, primaryDeviceName, StringComparison.OrdinalIgnoreCase))
-            {
-                flags |= CdsSetPrimary;
-            }
-
-            var staged = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, flags, IntPtr.Zero);
-            if (staged != DispChangeSuccessful)
-            {
-                throw new InvalidOperationException(
-                    $"Could not stage scene settings for {deviceName} — {DescribeDispChange(staged)}.");
-            }
-        }
-
-        var applied = ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
-        if (applied != DispChangeSuccessful)
-        {
-            throw new InvalidOperationException($"Could not commit the display scene — {DescribeDispChange(applied)}.");
+            throw new InvalidOperationException(
+                $"Could not commit the display scene (Win32 error {applied}).");
         }
 
         AppLogger.Log($"Display scene configuration committed ({states.Count} monitor(s), primary {primaryDeviceName}).");
     }
 
-    private static DEVMODE BuildSceneDevMode(string deviceName, DisplaySceneMonitorState state)
+    private static (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes) BuildDisplayConfigScene(
+        IReadOnlyDictionary<string, DisplaySceneMonitorState> states)
     {
-        var devMode = CreateDevMode();
-        if (!EnumDisplaySettings(deviceName, EnumCurrentSettings, ref devMode))
+        var (paths, modes) = QueryActiveConfig();
+        var mapped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var pathIndex = 0; pathIndex < paths.Length; pathIndex++)
         {
-            throw new InvalidOperationException($"Could not read current settings for {deviceName}.");
+            ref var path = ref paths[pathIndex];
+            if ((path.flags & DisplayconfigPathActive) == 0)
+            {
+                continue;
+            }
+
+            var sourceRequest = new DISPLAYCONFIG_SOURCE_DEVICE_NAME
+            {
+                header = new DISPLAYCONFIG_DEVICE_INFO_HEADER
+                {
+                    type = DISPLAYCONFIG_DEVICE_INFO_TYPE.GetSourceName,
+                    size = (uint)Marshal.SizeOf<DISPLAYCONFIG_SOURCE_DEVICE_NAME>(),
+                    adapterId = path.sourceInfo.adapterId,
+                    id = path.sourceInfo.id,
+                },
+            };
+            if (DisplayConfigGetDeviceInfo(ref sourceRequest) != ErrorSuccess ||
+                string.IsNullOrWhiteSpace(sourceRequest.viewGdiDeviceName) ||
+                !states.TryGetValue(sourceRequest.viewGdiDeviceName, out var state))
+            {
+                continue;
+            }
+
+            var modeIndex = path.sourceInfo.modeInfoIdx;
+            if (modeIndex >= modes.Length || modes[modeIndex].infoType != DISPLAYCONFIG_MODE_INFO.TypeSource)
+            {
+                throw new InvalidOperationException(
+                    $"Active source mode is unavailable for {sourceRequest.viewGdiDeviceName}.");
+            }
+
+            ref var mode = ref modes[modeIndex];
+            mode.sourceMode.width = (uint)state.Width;
+            mode.sourceMode.height = (uint)state.Height;
+            mode.sourceMode.position.x = state.PositionX;
+            mode.sourceMode.position.y = state.PositionY;
+            path.targetInfo.rotation = state.Orientation + 1;
+            if (state.RefreshRateHz > 0)
+            {
+                var currentHz = path.targetInfo.refreshRate.Denominator == 0
+                    ? 0
+                    : (double)path.targetInfo.refreshRate.Numerator / path.targetInfo.refreshRate.Denominator;
+                if (Math.Abs(currentHz - state.RefreshRateHz) >= 0.5)
+                {
+                    path.targetInfo.refreshRate.Numerator = (uint)state.RefreshRateHz;
+                    path.targetInfo.refreshRate.Denominator = 1;
+                }
+            }
+
+            mapped.Add(sourceRequest.viewGdiDeviceName);
         }
 
-        devMode.dmPelsWidth = (uint)state.Width;
-        devMode.dmPelsHeight = (uint)state.Height;
-        devMode.dmPositionX = state.PositionX;
-        devMode.dmPositionY = state.PositionY;
-        devMode.dmDisplayOrientation = state.Orientation;
-        devMode.dmFields = DmPelsWidth | DmPelsHeight | DmPosition | DmDisplayOrientation;
-        if (state.RefreshRateHz > 0)
+        var missing = states.Keys.FirstOrDefault(deviceName => !mapped.Contains(deviceName));
+        if (missing is not null)
         {
-            devMode.dmDisplayFrequency = (uint)state.RefreshRateHz;
-            devMode.dmFields |= DmDisplayFrequency;
+            throw new InvalidOperationException($"Scene display '{missing}' is not active in DisplayConfig.");
         }
 
-        return devMode;
+        return (paths, modes);
     }
 
     /// <summary>

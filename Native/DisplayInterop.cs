@@ -79,6 +79,7 @@ internal static class DisplayInterop
     public const uint DisplayconfigPathActive = 0x00000001;
 
     public const uint SdcApply = 0x00000080;
+    public const uint SdcValidate = 0x00000040;
     public const uint SdcUseSuppliedDisplayConfig = 0x00000020;
     public const uint SdcAllowChanges = 0x00000400;
     public const uint SdcSaveToDatabase = 0x00000200;

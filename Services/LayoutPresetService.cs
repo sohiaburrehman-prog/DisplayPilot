@@ -5,6 +5,57 @@ namespace PrimaryDisplaySwap.Services;
 /// <summary>Captures, previews, and transactionally applies saved display scenes.</summary>
 public static class LayoutPresetService
 {
+    internal enum SceneApplyStage
+    {
+        BuildDesiredState,
+        Preflight,
+        DescribeChanges,
+        CaptureRollback,
+        ApplyTopology,
+        ApplyHdr,
+        VerifyAppliedState,
+        RollbackTopology,
+        RollbackHdr,
+    }
+
+    internal interface ISceneDisplayOperations
+    {
+        IReadOnlyList<MonitorInfo> GetMonitors();
+        DisplaySceneMonitorState? GetCurrentSceneState(string deviceName);
+        void TestDisplayScene(
+            IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
+            string primaryDeviceName);
+        void ApplyDisplaySceneConfiguration(
+            IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
+            string primaryDeviceName);
+        DisplayManager.HdrStatus? GetHdrStatus(string deviceName);
+        void SetHdrEnabled(string deviceName, bool enable);
+    }
+
+    private sealed class DisplayManagerSceneOperations(DisplayManager displayManager) : ISceneDisplayOperations
+    {
+        public IReadOnlyList<MonitorInfo> GetMonitors() => displayManager.GetMonitors();
+
+        public DisplaySceneMonitorState? GetCurrentSceneState(string deviceName) =>
+            displayManager.GetCurrentSceneState(deviceName);
+
+        public void TestDisplayScene(
+            IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
+            string primaryDeviceName) =>
+            displayManager.TestDisplayScene(states, primaryDeviceName);
+
+        public void ApplyDisplaySceneConfiguration(
+            IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
+            string primaryDeviceName) =>
+            displayManager.ApplyDisplaySceneConfiguration(states, primaryDeviceName);
+
+        public DisplayManager.HdrStatus? GetHdrStatus(string deviceName) =>
+            displayManager.GetHdrStatus(deviceName);
+
+        public void SetHdrEnabled(string deviceName, bool enable) =>
+            displayManager.SetHdrEnabled(deviceName, enable);
+    }
+
     public sealed class ApplyResult
     {
         public bool Applied { get; init; }
@@ -13,9 +64,15 @@ public static class LayoutPresetService
         public string Message { get; init; } = string.Empty;
         public IReadOnlyList<string> Changes { get; init; } = Array.Empty<string>();
         public LayoutPreset? RollbackScene { get; init; }
+        internal SceneApplyStage? FailedStage { get; init; }
+        internal bool RollbackAttempted { get; init; }
+        internal bool RollbackSucceeded { get; init; }
     }
 
-    public static LayoutPreset CaptureCurrent(string name, DisplayManager displayManager)
+    public static LayoutPreset CaptureCurrent(string name, DisplayManager displayManager) =>
+        CaptureCurrent(name, new DisplayManagerSceneOperations(displayManager));
+
+    internal static LayoutPreset CaptureCurrent(string name, ISceneDisplayOperations displayManager)
     {
         var monitors = displayManager.GetMonitors();
         var primary = monitors.FirstOrDefault(m => m.IsPrimary);
@@ -40,7 +97,13 @@ public static class LayoutPresetService
         return scene;
     }
 
-    public static ApplyResult Preview(LayoutPreset scene, AppSettings settings, DisplayManager displayManager)
+    public static ApplyResult Preview(LayoutPreset scene, AppSettings settings, DisplayManager displayManager) =>
+        Preview(scene, settings, new DisplayManagerSceneOperations(displayManager));
+
+    internal static ApplyResult Preview(
+        LayoutPreset scene,
+        AppSettings settings,
+        ISceneDisplayOperations displayManager)
     {
         try
         {
@@ -63,7 +126,14 @@ public static class LayoutPresetService
         }
     }
 
-    public static ApplyResult TryApply(LayoutPreset scene, AppSettings settings, DisplayManager displayManager)
+    public static ApplyResult TryApply(LayoutPreset scene, AppSettings settings, DisplayManager displayManager) =>
+        TryApply(scene, settings, new DisplayManagerSceneOperations(displayManager));
+
+    internal static ApplyResult TryApply(
+        LayoutPreset scene,
+        AppSettings settings,
+        ISceneDisplayOperations displayManager,
+        Action<SceneApplyStage>? beforeStage = null)
     {
         if (scene is null || string.IsNullOrWhiteSpace(scene.PrimaryMonitorDeviceName))
         {
@@ -71,19 +141,59 @@ public static class LayoutPresetService
         }
 
         LayoutPreset? rollback = null;
+        var stage = SceneApplyStage.BuildDesiredState;
         try
         {
+            beforeStage?.Invoke(stage);
             var desired = BuildDesiredStates(scene, displayManager);
+
+            stage = SceneApplyStage.Preflight;
+            beforeStage?.Invoke(stage);
             displayManager.TestDisplayScene(desired, scene.PrimaryMonitorDeviceName);
+
+            stage = SceneApplyStage.DescribeChanges;
+            beforeStage?.Invoke(stage);
             var changes = DescribeChanges(scene, desired, settings, displayManager);
+
+            stage = SceneApplyStage.CaptureRollback;
+            beforeStage?.Invoke(stage);
             rollback = CaptureCurrent("Automatic rollback", displayManager);
 
+            stage = SceneApplyStage.ApplyTopology;
+            beforeStage?.Invoke(stage);
             displayManager.ApplyDisplaySceneConfiguration(desired, scene.PrimaryMonitorDeviceName);
+
+            stage = SceneApplyStage.ApplyHdr;
+            beforeStage?.Invoke(stage);
             ApplyHdrStates(desired, displayManager);
 
+            stage = SceneApplyStage.VerifyAppliedState;
+            beforeStage?.Invoke(stage);
             var monitors = displayManager.GetMonitors();
-            var primary = monitors.First(m =>
+            var primary = monitors.FirstOrDefault(m =>
                 string.Equals(m.DeviceName, scene.PrimaryMonitorDeviceName, StringComparison.OrdinalIgnoreCase));
+            if (primary is null || !primary.IsPrimary)
+            {
+                throw new InvalidOperationException(
+                    $"Scene verification failed: '{scene.PrimaryMonitorDeviceName}' is not primary.");
+            }
+
+            foreach (var (deviceName, expected) in desired)
+            {
+                var actual = displayManager.GetCurrentSceneState(deviceName);
+                if (actual is null ||
+                    actual.Width != expected.Width ||
+                    actual.Height != expected.Height ||
+                    actual.RefreshRateHz != expected.RefreshRateHz ||
+                    actual.PositionX != expected.PositionX ||
+                    actual.PositionY != expected.PositionY ||
+                    actual.Orientation != expected.Orientation ||
+                    (expected.HdrEnabled.HasValue && actual.HdrEnabled != expected.HdrEnabled))
+                {
+                    throw new InvalidOperationException(
+                        $"Scene verification failed: '{deviceName}' does not match the requested state.");
+                }
+            }
             var label = MonitorDisplayHelper.GetDisplayName(primary, settings);
             AppLogger.Log($"Display scene '{scene.Name}' applied — primary {label}.");
             return new ApplyResult
@@ -99,15 +209,23 @@ public static class LayoutPresetService
         }
         catch (Exception applyError)
         {
+            var failedStage = stage;
             var rollbackErrors = new List<string>();
             var rollbackSucceeded = false;
+            var rollbackAttempted = false;
             if (rollback?.MonitorStates.Count > 0 && !string.IsNullOrWhiteSpace(rollback.PrimaryMonitorDeviceName))
             {
+                rollbackAttempted = true;
                 try
                 {
+                    stage = SceneApplyStage.RollbackTopology;
+                    beforeStage?.Invoke(stage);
                     displayManager.ApplyDisplaySceneConfiguration(
                         rollback.MonitorStates,
                         rollback.PrimaryMonitorDeviceName);
+
+                    stage = SceneApplyStage.RollbackHdr;
+                    beforeStage?.Invoke(stage);
                     ApplyHdrStates(rollback.MonitorStates, displayManager);
                     rollbackSucceeded = true;
                 }
@@ -125,7 +243,13 @@ public static class LayoutPresetService
                     : "Original display settings were not restored.";
             var message = $"{applyError.Message} {rollbackSummary}";
             AppLogger.Log($"Display scene apply failed [{scene?.Name}]: {message}");
-            return new ApplyResult { Message = message };
+            return new ApplyResult
+            {
+                Message = message,
+                FailedStage = failedStage,
+                RollbackAttempted = rollbackAttempted,
+                RollbackSucceeded = rollbackSucceeded,
+            };
         }
     }
 
@@ -190,7 +314,7 @@ public static class LayoutPresetService
 
     private static Dictionary<string, DisplaySceneMonitorState> BuildDesiredStates(
         LayoutPreset scene,
-        DisplayManager displayManager)
+        ISceneDisplayOperations displayManager)
     {
         if (scene.MonitorStates.Count > 0)
         {
@@ -233,7 +357,7 @@ public static class LayoutPresetService
         LayoutPreset scene,
         IReadOnlyDictionary<string, DisplaySceneMonitorState> desired,
         AppSettings settings,
-        DisplayManager displayManager)
+        ISceneDisplayOperations displayManager)
     {
         var monitors = displayManager.GetMonitors();
         var changes = new List<string>();
@@ -288,7 +412,7 @@ public static class LayoutPresetService
 
     private static void ApplyHdrStates(
         IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
-        DisplayManager displayManager)
+        ISceneDisplayOperations displayManager)
     {
         foreach (var (deviceName, state) in states)
         {

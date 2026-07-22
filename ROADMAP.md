@@ -9,7 +9,7 @@ This roadmap is directional. Items move into a release only after design, safety
 - [x] Preserve and restore the full pre-automation scene when the active profile stack exits
 - [x] Capture, rename, delete, export, import, preview, and temporarily apply scenes from the CLI
 - [x] Keep CLI JSON envelopes consistent for scripting
-- [ ] Complete mixed-resolution, mixed-refresh, orientation, HDR, missing-display, and failed-apply hardware verification
+- [x] Complete mixed-resolution, mixed-refresh, orientation, HDR, missing-display, and failed-apply hardware verification
 
 ## 1.9 — Window layouts
 

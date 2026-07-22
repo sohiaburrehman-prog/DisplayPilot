@@ -4,6 +4,21 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+## [1.8.3] — 2026-07-22
+
+### Added
+- **Scene failure injection** — deterministic tests now inject failures before desired-state construction, preflight, change description, rollback capture, topology apply, HDR apply, final verification, and both rollback phases
+- **Historical migration fixtures** — explicit schema v5, v6, and v7 settings imports verify profile priorities, restore-on-exit, legacy modes, full rotation/HDR state, and profile-to-scene links survive normalization to schema v8
+- **Guarded hardware matrix** — `tools/HardwareMatrixTest` captures a complete baseline, exercises mixed resolution/refresh, primary, rotation, HDR, disconnected-monitor rejection, and verifies exact restoration after every live phase
+
+### Fixed
+- **Atomic scene topology** — complete display scenes now validate and commit through one supplied DisplayConfig transaction instead of staging devices separately in the registry; a rejected device cannot leave a partial refresh-rate/topology change behind
+- **Complete apply verification** — a scene is accepted only after primary, resolution, refresh, position, rotation, and requested HDR state all match; a mismatch triggers the captured rollback
+- **Stable flyout targeting** — monitor cards and arrangement-map tiles set primary by device name throughout the UI path, avoiding stale numeric indices after display re-enumeration
+
+### Changed
+- **Release hardware verification** — passed 12/12 live checks on an AORUS FO32U2P (3840×2160 at 240 Hz, HDR) plus Dell AW3423DW (3440×1440 at 175 Hz, HDR), including primary swap, 90° rotation, HDR toggle, and exact rollback
+
 ## [1.8.2] — 2026-07-19
 
 ### Fixed

@@ -637,6 +637,183 @@ invalidScene.MonitorStates.First().Value.Orientation = 9;
 Check(!LayoutPresetService.TryNormalizeImported(invalidScene, out var invalidSceneError) && invalidSceneError is not null,
     "Scene import validation rejects an invalid orientation");
 
+// Historical fixtures deliberately omit properties introduced by later schemas.
+var schema5Json = """
+{
+  "SchemaVersion": 5,
+  "Profiles": [{
+    "Id": "v5-profile",
+    "ProcessName": "legacy-game.exe",
+    "TargetMonitorName": "Legacy display",
+    "TargetMonitorDeviceName": "\\\\.\\DISPLAY2",
+    "RestoreOnExit": true,
+    "Priority": 12
+  }],
+  "LayoutPresets": [{
+    "Id": "v5-preset",
+    "Name": "Legacy modes",
+    "PrimaryMonitorDeviceName": "\\\\.\\DISPLAY2",
+    "MonitorModes": {
+      "\\\\.\\DISPLAY1": { "Width": 2560, "Height": 1440, "RefreshRateHz": 144 },
+      "\\\\.\\DISPLAY2": { "Width": 1920, "Height": 1080, "RefreshRateHz": 60 }
+    }
+  }]
+}
+""";
+Check(SettingsService.TryParseImport(schema5Json, out var schema5, out var schema5Error),
+    $"Schema v5 fixture imports (err={schema5Error ?? "none"})");
+Check(schema5?.SchemaVersion == AppSettings.CurrentSchemaVersion,
+    "Schema v5 upgrades to the current schema");
+Check(schema5?.Profiles.Single().Priority == 12 && schema5.Profiles[0].RestoreOnExit,
+    "Schema v5 preserves profile priority and restore-on-exit");
+Check(schema5?.LayoutPresets.Single().MonitorModes.Count == 2 &&
+      schema5.LayoutPresets[0].MonitorStates.Count == 0,
+    "Schema v5 legacy monitor modes remain available for safe live-state expansion");
+
+var schema6Json = """
+{
+  "SchemaVersion": 6,
+  "Profiles": [{
+    "Id": "v6-profile",
+    "ProcessName": "scene-game.exe",
+    "TargetMonitorName": "Scene display",
+    "TargetMonitorDeviceName": "\\\\.\\DISPLAY1"
+  }],
+  "LayoutPresets": [{
+    "Id": "v6-scene",
+    "Name": "Complete scene",
+    "PrimaryMonitorDeviceName": "\\\\.\\DISPLAY1",
+    "MonitorStates": {
+      "\\\\.\\DISPLAY1": {
+        "Width": 1440, "Height": 2560, "RefreshRateHz": 120,
+        "PositionX": 0, "PositionY": 0, "Orientation": 1, "HdrEnabled": true
+      }
+    }
+  }]
+}
+""";
+Check(SettingsService.TryParseImport(schema6Json, out var schema6, out var schema6Error),
+    $"Schema v6 fixture imports (err={schema6Error ?? "none"})");
+var schema6State = schema6?.LayoutPresets.Single().MonitorStates.Single().Value;
+Check(schema6?.SchemaVersion == AppSettings.CurrentSchemaVersion &&
+      schema6State is { Width: 1440, Height: 2560, RefreshRateHz: 120, Orientation: 1, HdrEnabled: true },
+    "Schema v6 preserves full resolution, refresh, rotation, position, and HDR scene state");
+Check(schema6?.Profiles.Single().DisplaySceneId == string.Empty,
+    "Schema v6 profile safely defaults its later scene reference to empty");
+
+var schema7Json = """
+{
+  "SchemaVersion": 7,
+  "Profiles": [{
+    "Id": "v7-profile",
+    "ProcessName": "linked-game.exe",
+    "TargetMonitorDeviceName": "\\\\.\\DISPLAY2",
+    "DisplaySceneId": "v7-scene",
+    "LastTriggeredUtc": "2026-01-02T03:04:05Z"
+  }],
+  "LayoutPresets": [{
+    "Id": "v7-scene",
+    "Name": "Linked scene",
+    "PrimaryMonitorDeviceName": "\\\\.\\DISPLAY2",
+    "MonitorStates": {
+      "\\\\.\\DISPLAY2": {
+        "Width": 3440, "Height": 1440, "RefreshRateHz": 175,
+        "PositionX": 2560, "PositionY": 0, "Orientation": 0, "HdrEnabled": false
+      }
+    }
+  }]
+}
+""";
+Check(SettingsService.TryParseImport(schema7Json, out var schema7, out var schema7Error),
+    $"Schema v7 fixture imports (err={schema7Error ?? "none"})");
+Check(schema7?.SchemaVersion == AppSettings.CurrentSchemaVersion && schema7.CompactTrayMenu,
+    "Schema v7 upgrades to v8 with the compact-tray default");
+Check(schema7?.Profiles.Single().DisplaySceneId == "v7-scene" &&
+      schema7.LayoutPresets.Single().Id == "v7-scene",
+    "Schema v7 preserves the profile-to-scene link");
+
+Console.WriteLine("\n== Scene apply failure injection & rollback ==");
+var fakeSceneDisplay = new FakeSceneDisplayOperations();
+var injectedScene = fakeSceneDisplay.CreateTargetScene();
+var forwardStages = new[]
+{
+    LayoutPresetService.SceneApplyStage.BuildDesiredState,
+    LayoutPresetService.SceneApplyStage.Preflight,
+    LayoutPresetService.SceneApplyStage.DescribeChanges,
+    LayoutPresetService.SceneApplyStage.CaptureRollback,
+    LayoutPresetService.SceneApplyStage.ApplyTopology,
+    LayoutPresetService.SceneApplyStage.ApplyHdr,
+    LayoutPresetService.SceneApplyStage.VerifyAppliedState,
+};
+foreach (var injectedStage in forwardStages)
+{
+    fakeSceneDisplay.Reset();
+    var result = LayoutPresetService.TryApply(
+        injectedScene,
+        new AppSettings(),
+        fakeSceneDisplay,
+        stage =>
+        {
+            if (stage == injectedStage)
+            {
+                throw new InvalidOperationException($"Injected {stage} failure.");
+            }
+        });
+    Check(!result.Applied && result.FailedStage == injectedStage,
+        $"Injected {injectedStage} failure is attributed to the correct stage");
+
+    var shouldRollback = injectedStage >= LayoutPresetService.SceneApplyStage.ApplyTopology;
+    Check(result.RollbackAttempted == shouldRollback,
+        $"Injected {injectedStage} failure {(shouldRollback ? "runs" : "does not run")} rollback");
+    Check(!shouldRollback || result.RollbackSucceeded,
+        $"Injected {injectedStage} failure {(shouldRollback ? "restores" : "does not mutate")} topology and HDR state");
+    Check(fakeSceneDisplay.MatchesBaseline(),
+        $"Injected {injectedStage} failure leaves the fake hardware at its baseline");
+}
+
+fakeSceneDisplay.Reset();
+var missingMonitorScene = injectedScene.Clone();
+missingMonitorScene.MonitorStates[@"\\.\DISPLAY3"] = missingMonitorScene.MonitorStates[@"\\.\DISPLAY2"].Clone();
+var missingResult = LayoutPresetService.TryApply(missingMonitorScene, new AppSettings(), fakeSceneDisplay);
+Check(!missingResult.Applied && missingResult.FailedStage == LayoutPresetService.SceneApplyStage.Preflight,
+    "Disconnected monitor fails preflight before any display mutation");
+Check(!missingResult.RollbackAttempted && fakeSceneDisplay.MatchesBaseline(),
+    "Disconnected-monitor rejection does not run or need rollback");
+
+fakeSceneDisplay.Reset();
+var rollbackTopologyFailure = LayoutPresetService.TryApply(
+    injectedScene,
+    new AppSettings(),
+    fakeSceneDisplay,
+    stage =>
+    {
+        if (stage is LayoutPresetService.SceneApplyStage.ApplyHdr or
+            LayoutPresetService.SceneApplyStage.RollbackTopology)
+        {
+            throw new InvalidOperationException($"Injected {stage} failure.");
+        }
+    });
+Check(rollbackTopologyFailure.RollbackAttempted && !rollbackTopologyFailure.RollbackSucceeded &&
+      rollbackTopologyFailure.Message.Contains("Rollback also failed", StringComparison.Ordinal),
+    "Rollback-topology injection reports that restoration failed");
+
+fakeSceneDisplay.Reset();
+var rollbackHdrFailure = LayoutPresetService.TryApply(
+    injectedScene,
+    new AppSettings(),
+    fakeSceneDisplay,
+    stage =>
+    {
+        if (stage is LayoutPresetService.SceneApplyStage.VerifyAppliedState or
+            LayoutPresetService.SceneApplyStage.RollbackHdr)
+        {
+            throw new InvalidOperationException($"Injected {stage} failure.");
+        }
+    });
+Check(rollbackHdrFailure.RollbackAttempted && !rollbackHdrFailure.RollbackSucceeded &&
+      rollbackHdrFailure.Message.Contains("Rollback also failed", StringComparison.Ordinal),
+    "Rollback-HDR injection reports that restoration failed");
+
 v4Settings.SchemaVersion = 8;
 v4Settings.LayoutPresets.Add(preset);
 v4Settings.Profiles[0].DisplaySceneId = preset.Id;
@@ -847,3 +1024,150 @@ Console.WriteLine("\n== Work-area query (flyout placement) ==");
 
 Console.WriteLine($"\n{passed} passed, {failed} failed");
 Environment.Exit(failed > 0 ? 1 : 0);
+
+internal sealed class FakeSceneDisplayOperations : LayoutPresetService.ISceneDisplayOperations
+{
+    private const string Display1 = @"\\.\DISPLAY1";
+    private const string Display2 = @"\\.\DISPLAY2";
+
+    private Dictionary<string, DisplaySceneMonitorState> _states = new(StringComparer.OrdinalIgnoreCase);
+    private string _primaryDeviceName = Display1;
+
+    public FakeSceneDisplayOperations() => Reset();
+
+    public void Reset()
+    {
+        _primaryDeviceName = Display1;
+        _states = new Dictionary<string, DisplaySceneMonitorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Display1] = new()
+            {
+                Width = 2560,
+                Height = 1440,
+                RefreshRateHz = 144,
+                PositionX = 0,
+                PositionY = 0,
+                Orientation = 0,
+                HdrEnabled = false,
+            },
+            [Display2] = new()
+            {
+                Width = 3440,
+                Height = 1440,
+                RefreshRateHz = 175,
+                PositionX = 2560,
+                PositionY = 0,
+                Orientation = 0,
+                HdrEnabled = false,
+            },
+        };
+    }
+
+    public LayoutPreset CreateTargetScene() => new()
+    {
+        Id = "failure-injection-scene",
+        Name = "Failure injection",
+        PrimaryMonitorDeviceName = Display2,
+        MonitorStates = new Dictionary<string, DisplaySceneMonitorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            [Display1] = new()
+            {
+                Width = 1440,
+                Height = 2560,
+                RefreshRateHz = 120,
+                PositionX = 0,
+                PositionY = 0,
+                Orientation = 1,
+                HdrEnabled = true,
+            },
+            [Display2] = new()
+            {
+                Width = 1920,
+                Height = 1080,
+                RefreshRateHz = 60,
+                PositionX = 1440,
+                PositionY = 0,
+                Orientation = 0,
+                HdrEnabled = true,
+            },
+        },
+    };
+
+    public bool MatchesBaseline() =>
+        string.Equals(_primaryDeviceName, Display1, StringComparison.OrdinalIgnoreCase) &&
+        Matches(_states[Display1], 2560, 1440, 144, 0, 0, 0, false) &&
+        Matches(_states[Display2], 3440, 1440, 175, 2560, 0, 0, false);
+
+    public IReadOnlyList<MonitorInfo> GetMonitors() => _states.Select((entry, index) => new MonitorInfo
+    {
+        Index = index,
+        DeviceName = entry.Key,
+        Name = $"Fake monitor {index + 1}",
+        Width = entry.Value.Width,
+        Height = entry.Value.Height,
+        PositionX = entry.Value.PositionX,
+        PositionY = entry.Value.PositionY,
+        IsPrimary = string.Equals(entry.Key, _primaryDeviceName, StringComparison.OrdinalIgnoreCase),
+        RefreshRateHz = entry.Value.RefreshRateHz,
+    }).ToList();
+
+    public DisplaySceneMonitorState? GetCurrentSceneState(string deviceName) =>
+        _states.TryGetValue(deviceName, out var state) ? state.Clone() : null;
+
+    public void TestDisplayScene(
+        IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
+        string primaryDeviceName)
+    {
+        if (!states.ContainsKey(primaryDeviceName))
+        {
+            throw new InvalidOperationException($"Primary monitor '{primaryDeviceName}' is missing from the scene.");
+        }
+
+        var missing = states.Keys.FirstOrDefault(device => !_states.ContainsKey(device));
+        if (missing is not null)
+        {
+            throw new InvalidOperationException($"Monitor '{missing}' is disconnected.");
+        }
+    }
+
+    public void ApplyDisplaySceneConfiguration(
+        IReadOnlyDictionary<string, DisplaySceneMonitorState> states,
+        string primaryDeviceName)
+    {
+        TestDisplayScene(states, primaryDeviceName);
+        foreach (var (deviceName, target) in states)
+        {
+            var currentHdr = _states[deviceName].HdrEnabled;
+            _states[deviceName] = target.Clone();
+            _states[deviceName].HdrEnabled = currentHdr;
+        }
+        _primaryDeviceName = primaryDeviceName;
+    }
+
+    public DisplayManager.HdrStatus? GetHdrStatus(string deviceName) =>
+        _states.TryGetValue(deviceName, out var state)
+            ? new DisplayManager.HdrStatus(true, state.HdrEnabled == true)
+            : null;
+
+    public void SetHdrEnabled(string deviceName, bool enable)
+    {
+        if (!_states.TryGetValue(deviceName, out var state))
+        {
+            throw new InvalidOperationException($"Monitor '{deviceName}' is disconnected.");
+        }
+        state.HdrEnabled = enable;
+    }
+
+    private static bool Matches(
+        DisplaySceneMonitorState state,
+        int width,
+        int height,
+        int refresh,
+        int x,
+        int y,
+        uint orientation,
+        bool hdr) =>
+        state.Width == width && state.Height == height && state.RefreshRateHz == refresh &&
+        state.PositionX == x && state.PositionY == y && state.Orientation == orientation &&
+        state.HdrEnabled == hdr;
+}

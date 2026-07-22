@@ -1,6 +1,18 @@
 # DisplayPilot release verification
 
-Tested **2026-07-14** on Windows 11, dual monitors (AORUS FO32U2P + Dell AW3423DW).
+Tested **2026-07-22** on Windows 11, dual monitors (AORUS FO32U2P + Dell AW3423DW).
+
+## 1.8.3 hardware result
+
+The guarded live matrix passed **12/12 with 0 failures and 0 skips**:
+
+- AORUS FO32U2P — 3840×2160 at 240 Hz, HDR on, original primary
+- Dell AW3423DW — 3440×1440 at 175 Hz, HDR on
+- Mixed resolution and mixed refresh native preflight
+- Primary swap through a complete scene, followed by exact rollback
+- 90° secondary-display rotation, followed by exact rollback
+- HDR toggle, followed by exact rollback
+- Disconnected-display and invalid-orientation rejection before commit
 
 ## Monitor count paths
 
@@ -29,6 +41,8 @@ Tested **2026-07-14** on Windows 11, dual monitors (AORUS FO32U2P + Dell AW3423D
 ```powershell
 dotnet run --project tools/SwapTest/SwapTest.csproj -c Release -- --once
 dotnet run --project tools/MonitorLogicTest/MonitorLogicTest.csproj -c Release   # expect all passed on dual-monitor setup
+dotnet run --project tools/HardwareMatrixTest/HardwareMatrixTest.csproj -c Release
+dotnet run --project tools/HardwareMatrixTest/HardwareMatrixTest.csproj -c Release -- --confirm-live
 dotnet build -c Release   # 0 warnings
 ```
 
