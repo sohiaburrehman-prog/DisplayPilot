@@ -478,6 +478,14 @@ public sealed class ProcessWatcherService : IDisposable
         var ordered = ProfileConflictResolver.OrderCandidates(activeCandidates, rule).ToList();
         var preferred = ordered.FirstOrDefault();
 
+        // FAST PATH: Idle state. No candidates active, and no session to end.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            _forceReconcile = false;
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         if (preferred is not null &&
             !_forceReconcile &&
             _winnerSnapshot is not null &&
