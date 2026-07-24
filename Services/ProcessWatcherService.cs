@@ -503,6 +503,14 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // Fast-path: If there are no matching profiles and no previous session to clean up, skip the expensive GetMonitors() call
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            _forceReconcile = false;
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
