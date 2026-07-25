@@ -66,10 +66,13 @@
          short label in the closed box — DisplayMemberPath was being ignored, so
          both pickers fell back to DisplayMode.ToString() and truncated. -->
     <DataTemplate x:Key="ResolutionItemTemplate">
-        <TextBlock Text="{Binding ResolutionLabel}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding ResolutionLabel}"
+                   TextTrimming="CharacterEllipsis"
+                   Foreground="{StaticResource TextPrimaryBrush}" />
     </DataTemplate>
     <DataTemplate x:Key="RefreshItemTemplate">
-        <TextBlock Text="{Binding RefreshLabel}" />
+        <TextBlock Text="{Binding RefreshLabel}"
+                   Foreground="{StaticResource TextPrimaryBrush}" />
     </DataTemplate>
 
     <FontFamily x:Key="UiFont">Segoe UI Variable Display, Segoe UI</FontFamily>
@@ -468,11 +471,16 @@
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
+                                    <!-- TextElement.Foreground is set here because the
+                                         ToggleButton otherwise picks up the default Button
+                                         style's black text, so the selected item in the
+                                         closed box rendered black on the dark surface. -->
                                     <Border x:Name="Bd"
                                             Background="{StaticResource ScreenIdleBrush}"
                                             BorderBrush="{StaticResource HairlineBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="8">
+                                            CornerRadius="8"
+                                            TextElement.Foreground="{StaticResource TextPrimaryBrush}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />

@@ -4,6 +4,11 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-07-25
+
+### Fixed
+- **Dropdown text colour** — the selected item in a closed combo box (resolution, refresh, and the pickers in Settings and the profile editor) rendered in black because the templated toggle button inherited the default Button style's foreground instead of the themed text colour
+
 ## [1.9.1] — 2026-07-25
 
 ### Fixed
