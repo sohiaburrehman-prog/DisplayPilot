@@ -254,12 +254,24 @@ public static class ThemeManager
         return (hi + 0.05) / (lo + 0.05);
     }
 
-    /// <summary>Black or white — whichever reads better on <paramref name="background"/>.</summary>
+    /// <summary>
+    /// Text colour for content sitting on the accent.
+    ///
+    /// Deliberately NOT "whichever has the highest contrast ratio" — on a
+    /// mid-tone accent (e.g. #4F8DFF) black scores ~5.6:1 against white's
+    /// ~3.2:1, so pure maximisation yields black text on a blue button, which
+    /// looks broken next to the rest of the light-on-dark UI. Windows, Fluent
+    /// and Material all keep white on accent fills until the accent is light
+    /// enough that white genuinely fails, so we prefer white and only fall
+    /// back to near-black once white drops below the WCAG large-text floor.
+    /// </summary>
     private static Color ContrastingText(Color background)
     {
         var white = Color.FromRgb(0xFF, 0xFF, 0xFF);
-        var black = Color.FromRgb(0x14, 0x18, 0x22);
-        return ContrastRatio(background, white) >= ContrastRatio(background, black) ? white : black;
+        var dark = Color.FromRgb(0x14, 0x18, 0x22);
+        const double largeTextMinimum = 3.0;
+
+        return ContrastRatio(background, white) >= largeTextMinimum ? white : dark;
     }
 
     /// <summary>

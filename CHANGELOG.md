@@ -4,6 +4,11 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+## [1.9.1] — 2026-07-25
+
+### Fixed
+- **Accent button text** — mid-tone accents (e.g. typical blue) keep white labels on accent fills instead of switching to black when black merely wins the contrast ratio; near-black is used only when white falls below the WCAG large-text floor
+
 ## [1.9.0] — 2026-07-25
 
 ### Added
