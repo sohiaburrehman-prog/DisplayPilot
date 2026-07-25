@@ -10,6 +10,9 @@ public sealed class DisplayMode : IEquatable<DisplayMode>
 
     public string ResolutionLabel => $"{Width} × {Height}";
 
+    /// <summary>Refresh rate on its own, for the refresh-only picker.</summary>
+    public string RefreshLabel => RefreshRateHz > 0 ? $"{RefreshRateHz} Hz" : "—";
+
     public string Label =>
         RefreshRateHz > 0 ? $"{Width} × {Height} · {RefreshRateHz} Hz" : $"{Width} × {Height}";
 

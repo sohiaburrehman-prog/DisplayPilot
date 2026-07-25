@@ -81,7 +81,12 @@ public partial class PanelWindow : Window
             }
         };
 
-        PanelTabs.SelectionChanged += (_, _) => LoadPendingModeEditors();
+        PanelTabs.SelectionChanged += (_, _) =>
+        {
+            // Populate first so the new tab's natural height is measurable.
+            LoadPendingModeEditors();
+            AnimatePanelHeight();
+        };
 
         MapScroll.SizeChanged += (_, _) => RebuildArrangementMapIfNeeded();
         MapScroll.PreviewMouseWheel += MapScroll_PreviewMouseWheel;
@@ -723,13 +728,17 @@ public partial class PanelWindow : Window
         var resolutionCombo = new ComboBox
         {
             Style = (Style)FindResource("DarkComboBox"),
+            ItemTemplate = (DataTemplate)FindResource("ResolutionItemTemplate"),
             Margin = new Thickness(0, 0, 4, 0),
             MinWidth = 100,
             IsEnabled = false,
         };
+        // Refresh-only labels ("240 Hz"): the resolution is already shown in the
+        // first picker, so repeating it here just truncated.
         var refreshCombo = new ComboBox
         {
             Style = (Style)FindResource("DarkComboBox"),
+            ItemTemplate = (DataTemplate)FindResource("RefreshItemTemplate"),
             Width = 84,
             Margin = new Thickness(0, 0, 4, 0),
             IsEnabled = false,
@@ -753,6 +762,11 @@ public partial class PanelWindow : Window
         grid.Children.Add(resolutionCombo);
         grid.Children.Add(refreshCombo);
         grid.Children.Add(applyButton);
+
+        // Post-apply confirmation strip: "Applied · reverting in 12s" + Keep.
+        // Mirrors what Windows itself does for display-mode changes, so a bad
+        // mode can't leave the screen unusable.
+        var confirmRow = new RevertConfirmRow(this);
 
         // HDR toggle: hidden unless the monitor reports HDR support.
         var hdrCheck = new CheckBox
@@ -783,7 +797,6 @@ public partial class PanelWindow : Window
             try
             {
                 refreshCombo.ItemsSource = rates;
-                refreshCombo.DisplayMemberPath = nameof(DisplayMode.RefreshRateHz);
                 refreshCombo.SelectedItem = rates.FirstOrDefault();
             }
             finally
@@ -812,7 +825,6 @@ public partial class PanelWindow : Window
             try
             {
                 resolutionCombo.ItemsSource = resolutions;
-                resolutionCombo.DisplayMemberPath = nameof(DisplayMode.ResolutionLabel);
                 resolutionCombo.IsEnabled = resolutions.Count > 0;
                 refreshCombo.IsEnabled = resolutions.Count > 0;
 
@@ -876,6 +888,10 @@ public partial class PanelWindow : Window
                 return;
             }
 
+            // Capture the mode we're leaving so the countdown can put it back
+            // if the new one is unusable (black screen, out-of-range monitor).
+            var previous = _displayManager.GetCurrentMode(deviceName);
+
             try
             {
                 applyButton.IsEnabled = false;
@@ -883,6 +899,12 @@ public partial class PanelWindow : Window
                 await Task.Run(() => _displayManager.ApplyDisplayMode(deviceName, chosen));
                 RefreshMonitors();
                 ShowStatus($"{MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current)}: applied {chosen.Label}.", success: true);
+                PulseApplySuccess(applyButton);
+
+                if (previous is not null && !previous.Equals(chosen))
+                {
+                    StartRevertCountdown(confirmRow, deviceName, previous, chosen);
+                }
             }
             catch (Exception ex)
             {
@@ -952,9 +974,272 @@ public partial class PanelWindow : Window
         var content = new StackPanel();
         content.Children.Add(header);
         content.Children.Add(grid);
+        content.Children.Add(confirmRow.Root);
         content.Children.Add(hdrCheck);
         card.Child = content;
         return card;
+    }
+
+    /// <summary>
+    /// Inline "Applied · reverting in Ns" strip shown under a mode editor after
+    /// a resolution/refresh change. If the user does not press Keep before the
+    /// countdown expires, the previous mode is restored — the safety net for a
+    /// mode the monitor cannot actually display.
+    /// </summary>
+    private sealed class RevertConfirmRow
+    {
+        private const int CountdownSeconds = 12;
+
+        private readonly PanelWindow _owner;
+        private readonly TextBlock _label;
+        private readonly System.Windows.Threading.DispatcherTimer _timer;
+
+        private int _remaining;
+        private string _deviceName = string.Empty;
+        private string _appliedLabel = string.Empty;
+        private DisplayMode? _previous;
+
+        public Border Root { get; }
+
+        public RevertConfirmRow(PanelWindow owner)
+        {
+            _owner = owner;
+
+            _label = new TextBlock
+            {
+                FontFamily = (FontFamily)owner.FindResource("UiFont"),
+                FontSize = 11.5,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)owner.FindResource("TextPrimaryBrush"),
+            };
+
+            var keepButton = new Button
+            {
+                Style = (Style)owner.FindResource("MiniButton"),
+                Content = "Keep",
+                Height = 26,
+                MinWidth = 54,
+                Margin = new Thickness(8, 0, 0, 0),
+            };
+            keepButton.Click += (_, _) => Keep();
+
+            var revertButton = new Button
+            {
+                Style = (Style)owner.FindResource("MiniButton"),
+                Content = "Revert",
+                Height = 26,
+                MinWidth = 54,
+                Margin = new Thickness(6, 0, 0, 0),
+            };
+            revertButton.Click += (_, _) => RevertNow();
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(_label, 0);
+            Grid.SetColumn(keepButton, 1);
+            Grid.SetColumn(revertButton, 2);
+            grid.Children.Add(_label);
+            grid.Children.Add(keepButton);
+            grid.Children.Add(revertButton);
+
+            Root = new Border
+            {
+                Background = (Brush)owner.FindResource("MapSurfaceBrush"),
+                BorderBrush = (Brush)owner.FindResource("HairlineBrush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(0, 10, 0, 0),
+                Visibility = Visibility.Collapsed,
+                Child = grid,
+            };
+
+            _timer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1),
+            };
+            _timer.Tick += (_, _) => Tick();
+        }
+
+        public void Start(string deviceName, DisplayMode previous, DisplayMode applied)
+        {
+            _deviceName = deviceName;
+            _previous = previous;
+            _appliedLabel = applied.Label;
+            _remaining = CountdownSeconds;
+
+            UpdateLabel();
+            Root.Visibility = Visibility.Visible;
+            _owner.FadeIn(Root);
+            _timer.Start();
+        }
+
+        private void UpdateLabel() =>
+            _label.Text = $"Applied {_appliedLabel} · reverting in {_remaining}s";
+
+        private void Tick()
+        {
+            _remaining--;
+            if (_remaining > 0)
+            {
+                UpdateLabel();
+                return;
+            }
+
+            RevertNow();
+        }
+
+        private void Keep()
+        {
+            Stop();
+            _owner.ShowStatus("Display mode kept.", success: true);
+        }
+
+        private async void RevertNow()
+        {
+            var previous = _previous;
+            var device = _deviceName;
+            Stop();
+
+            if (previous is null || string.IsNullOrEmpty(device))
+            {
+                return;
+            }
+
+            try
+            {
+                await Task.Run(() => _owner._displayManager.ApplyDisplayMode(device, previous));
+                _owner.RefreshMonitors();
+                _owner.ShowStatus($"Reverted to {previous.Label}.", success: true);
+            }
+            catch (Exception ex)
+            {
+                _owner.ShowStatus(ex.Message, success: false);
+            }
+        }
+
+        public void Stop()
+        {
+            _timer.Stop();
+            Root.Visibility = Visibility.Collapsed;
+            _previous = null;
+        }
+    }
+
+    private void StartRevertCountdown(
+        RevertConfirmRow row, string deviceName, DisplayMode previous, DisplayMode applied)
+    {
+        row.Start(deviceName, previous, applied);
+    }
+
+    /// <summary>Brief accent→green flash on a button after a successful action.</summary>
+    private void PulseApplySuccess(Button button)
+    {
+        if (!AnimationsEnabled)
+        {
+            return;
+        }
+
+        var accent = ((SolidColorBrush)FindResource("AccentBrush")).Color;
+        var success = ((SolidColorBrush)FindResource("SuccessBrush")).Color;
+
+        // Animate a private brush instance — animating the shared AccentBrush
+        // would flash every accent-coloured control in the window.
+        var brush = new SolidColorBrush(accent);
+        button.Background = brush;
+
+        var flash = new ColorAnimationUsingKeyFrames();
+        flash.KeyFrames.Add(new LinearColorKeyFrame(success, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(140))));
+        flash.KeyFrames.Add(new LinearColorKeyFrame(success, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(700))));
+        flash.KeyFrames.Add(new LinearColorKeyFrame(accent, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(950))));
+        flash.Completed += (_, _) =>
+        {
+            brush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+            button.ClearValue(BackgroundProperty);
+        };
+
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, flash);
+    }
+
+    /// <summary>Short fade-in used by transient inline UI.</summary>
+    private void FadeIn(UIElement element)
+    {
+        if (!AnimationsEnabled)
+        {
+            element.Opacity = 1;
+            return;
+        }
+
+        element.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            });
+    }
+
+    /// <summary>Honours the Windows "show animations" accessibility setting.</summary>
+    private static bool AnimationsEnabled => SystemParameters.ClientAreaAnimation;
+
+    private bool _animatingHeight;
+
+    /// <summary>
+    /// Smoothly grows/shrinks the flyout when switching tabs instead of
+    /// snapping. Height and Top animate together so the bottom edge stays
+    /// pinned above the tray while the panel resizes.
+    /// </summary>
+    private void AnimatePanelHeight()
+    {
+        if (!IsVisible || _animatingHeight)
+        {
+            return;
+        }
+
+        if (!AnimationsEnabled)
+        {
+            PositionInWorkArea();
+            return;
+        }
+
+        var from = ActualHeight;
+
+        // Let WPF compute the natural height of the newly selected tab.
+        SizeToContent = SizeToContent.Height;
+        UpdateLayout();
+        var to = ActualHeight;
+
+        if (from <= 0 || to <= 0 || Math.Abs(to - from) < 2)
+        {
+            PositionInWorkArea();
+            return;
+        }
+
+        var bottom = Top + from;
+
+        _animatingHeight = true;
+        SizeToContent = SizeToContent.Manual;
+        Height = from;
+
+        var duration = TimeSpan.FromMilliseconds(190);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        var heightAnim = new DoubleAnimation(from, to, duration) { EasingFunction = ease };
+        var topAnim = new DoubleAnimation(Top, bottom - to, duration) { EasingFunction = ease };
+
+        heightAnim.Completed += (_, _) =>
+        {
+            // Hand control back to SizeToContent, then snap to exact placement.
+            BeginAnimation(HeightProperty, null);
+            BeginAnimation(TopProperty, null);
+            SizeToContent = SizeToContent.Height;
+            _animatingHeight = false;
+            PositionInWorkArea();
+        };
+
+        BeginAnimation(TopProperty, topAnim);
+        BeginAnimation(HeightProperty, heightAnim);
     }
 
     private UIElement BuildMonitorCard(MonitorInfo monitor, bool showSetPrimaryHint)

@@ -4,6 +4,21 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-07-25
+
+### Added
+- **Faster auto-swap detection** — profiles now react to WMI process-creation events instead of waiting for the next poll, cutting the delay before a game's monitor swap from up to 3 seconds down to about 1; the timer poll remains as a fallback for process exits and when WMI is unavailable
+- **Apply confirmation with revert countdown** — changing a resolution or refresh rate shows an inline "Applied … · reverting in 12s" strip with Keep and Revert, restoring the previous mode automatically if it is not confirmed
+- **Accent-aware contrast** — text and glyphs drawn on the accent colour now pick black or white from the accent's WCAG relative luminance, so a pale Windows accent no longer renders unreadable labels on the selected tab, Apply buttons, HDR checkmark, and Swap button
+- **Motion polish** — the flyout eases between tab heights instead of snapping (bottom edge stays pinned above the tray), the checkbox glyph pops in with a slight overshoot, and Apply flashes accent-to-green on success; all honour the Windows "show animations" accessibility setting
+
+### Fixed
+- **Mode picker truncation** — the resolution and refresh pickers ignored `DisplayMemberPath` under the custom ComboBox template and fell back to the full mode label, truncating the refresh box; both now use explicit item templates and the refresh picker shows the rate alone ("240 Hz")
+- **Accent usability guard** — very dark accents are lifted on the dark theme and very light ones deepened on the light theme so borders and fills stay visible
+
+### Changed
+- **Tighter vertical rhythm** — section headers use balanced 12/8 top and bottom margins so the panel reads less loose
+
 ## [1.8.3] — 2026-07-22
 
 ### Added

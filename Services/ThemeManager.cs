@@ -62,13 +62,17 @@ public static class ThemeManager
 
         _preference = preference;
         IsLight = ResolveIsLight(preference);
-        var accent = ResolveAccent();
+        var accent = EnsureUsableAccent(ResolveAccent());
         var accentHover = Lighten(accent, IsLight ? -0.12 : 0.18);
 
         var p = IsLight ? LightPalette() : DarkPalette();
 
         SetSolid("AccentBrush", accent);
         SetSolid("AccentHoverBrush", accentHover);
+
+        // Text/glyphs drawn on the accent must contrast with it — a pale
+        // Windows accent needs dark text, a saturated one needs white.
+        SetSolid("OnAccentBrush", ContrastingText(accent));
 
         foreach (var (key, color) in p.Solids)
         {
@@ -225,6 +229,59 @@ public static class ThemeManager
             brush.GradientStops[0].Color = start;
             brush.GradientStops[^1].Color = end;
         }
+    }
+
+    /// <summary>
+    /// Relative luminance (WCAG 2.x), used to decide black-vs-white text and to
+    /// judge whether an accent is readable on the current surface.
+    /// </summary>
+    private static double RelativeLuminance(Color c)
+    {
+        static double Channel(byte v)
+        {
+            var s = v / 255.0;
+            return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
+    }
+
+    private static double ContrastRatio(Color a, Color b)
+    {
+        var la = RelativeLuminance(a);
+        var lb = RelativeLuminance(b);
+        var (hi, lo) = la >= lb ? (la, lb) : (lb, la);
+        return (hi + 0.05) / (lo + 0.05);
+    }
+
+    /// <summary>Black or white — whichever reads better on <paramref name="background"/>.</summary>
+    private static Color ContrastingText(Color background)
+    {
+        var white = Color.FromRgb(0xFF, 0xFF, 0xFF);
+        var black = Color.FromRgb(0x14, 0x18, 0x22);
+        return ContrastRatio(background, white) >= ContrastRatio(background, black) ? white : black;
+    }
+
+    /// <summary>
+    /// Keeps a user-chosen Windows accent usable as a highlight: very dark
+    /// accents get lifted on the dark theme (and very light ones deepened on
+    /// the light theme) so borders and fills stay visible against surfaces.
+    /// </summary>
+    private static Color EnsureUsableAccent(Color accent)
+    {
+        var luminance = RelativeLuminance(accent);
+
+        if (!IsLight && luminance < 0.06)
+        {
+            return Lighten(accent, 0.45);
+        }
+
+        if (IsLight && luminance > 0.75)
+        {
+            return Lighten(accent, -0.35);
+        }
+
+        return accent;
     }
 
     private static Color FromHex(string hex) => (Color)ColorConverter.ConvertFromString(hex)!;

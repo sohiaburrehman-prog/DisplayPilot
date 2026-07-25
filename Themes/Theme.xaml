@@ -30,6 +30,10 @@
     <SolidColorBrush x:Key="HairlineBrush" Color="#24FFFFFF" />
     <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <!-- Text/glyph colour drawn ON TOP of the accent. ThemeManager recomputes
+         this as black or white from the live Windows accent's luminance, so a
+         pale accent gets dark text instead of unreadable white. -->
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="SwapBrush" Color="#FF9500" />
     <SolidColorBrush x:Key="VioletBrush" Color="{StaticResource VioletColor}" />
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
@@ -57,13 +61,24 @@
         <GradientStop Color="#FF1C2235" Offset="1" />
     </LinearGradientBrush>
 
+    <!-- Item templates for the mode pickers. Using ItemTemplate (rather than
+         DisplayMemberPath) is what makes the custom ComboBox template show the
+         short label in the closed box — DisplayMemberPath was being ignored, so
+         both pickers fell back to DisplayMode.ToString() and truncated. -->
+    <DataTemplate x:Key="ResolutionItemTemplate">
+        <TextBlock Text="{Binding ResolutionLabel}" TextTrimming="CharacterEllipsis" />
+    </DataTemplate>
+    <DataTemplate x:Key="RefreshItemTemplate">
+        <TextBlock Text="{Binding RefreshLabel}" />
+    </DataTemplate>
+
     <FontFamily x:Key="UiFont">Segoe UI Variable Display, Segoe UI</FontFamily>
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
     <!-- ═══════ Swap button — hero gradient with glow ═══════ -->
     <Style x:Key="SwapButton" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource HeroGradientBrush}" />
-        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
         <Setter Property="FontSize" Value="13.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -272,7 +287,7 @@
     <!-- ═══════ Accent (primary) compact button ═══════ -->
     <Style x:Key="AccentMiniButton" TargetType="Button" BasedOn="{StaticResource MiniButton}">
         <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
         <Setter Property="Template">
             <Setter.Value>
@@ -327,10 +342,15 @@
                                        Text="&#xE73E;"
                                        FontFamily="{StaticResource IconFont}"
                                        FontSize="11"
-                                       Foreground="White"
+                                       Foreground="{StaticResource OnAccentBrush}"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center"
-                                       Visibility="Collapsed" />
+                                       RenderTransformOrigin="0.5,0.5"
+                                       Visibility="Collapsed">
+                                <TextBlock.RenderTransform>
+                                    <ScaleTransform x:Name="CheckScale" ScaleX="1" ScaleY="1" />
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
                         </Border>
                         <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
@@ -339,6 +359,28 @@
                             <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}" />
                             <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                             <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                            <!-- Glyph pops in with a slight overshoot, matching
+                                 the toggle-switch motion. -->
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="CheckScale"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         From="0.6" To="1" Duration="0:0:0.22">
+                                            <DoubleAnimation.EasingFunction>
+                                                <BackEase EasingMode="EaseOut" Amplitude="0.9" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                        <DoubleAnimation Storyboard.TargetName="CheckScale"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         From="0.6" To="1" Duration="0:0:0.22">
+                                            <DoubleAnimation.EasingFunction>
+                                                <BackEase EasingMode="EaseOut" Amplitude="0.9" />
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
@@ -512,7 +554,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Tab" Property="Background" Value="{StaticResource AccentBrush}" />
-                            <Setter Property="Foreground" Value="White" />
+                            <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}" />
                         </Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
