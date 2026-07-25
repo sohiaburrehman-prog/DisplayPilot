@@ -503,6 +503,15 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // ⚡ Bolt: Fast-path early return. If no profiles match and we have no active session
+        // to restore, skip GetMonitors() to avoid expensive Win32 display config queries
+        // during the frequent polling loop, preventing idle micro-stutters.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
