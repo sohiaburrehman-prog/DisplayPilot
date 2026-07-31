@@ -8,14 +8,14 @@
     <Color x:Key="VioletColor">#9D6BFF</Color>
     <Color x:Key="TextPrimaryColor">#F6F8FE</Color>
     <Color x:Key="TextSecondaryColor">#AEB7CC</Color>
-    <Color x:Key="TextMutedColor">#7E879C</Color>
+    <Color x:Key="TextMutedColor">#98A2B8</Color>
     <Color x:Key="SuccessColor">#46E0A0</Color>
     <Color x:Key="ErrorColor">#FF7373</Color>
 
     <!-- Root flyout surface — indigo gradient, ~88% opaque over acrylic. -->
     <LinearGradientBrush x:Key="FlyoutBrush" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#E60C1020" Offset="0" />
-        <GradientStop Color="#E6171F38" Offset="1" />
+        <GradientStop Color="#F20C1020" Offset="0" />
+        <GradientStop Color="#F2171F38" Offset="1" />
     </LinearGradientBrush>
     <!-- Opaque fallback for systems without the acrylic backdrop. -->
     <LinearGradientBrush x:Key="FlyoutOpaqueBrush" StartPoint="0,0" EndPoint="0,1">

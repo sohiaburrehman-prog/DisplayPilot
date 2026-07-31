@@ -169,8 +169,10 @@ public static class ThemeManager
 
     private static Palette DarkPalette() => new()
     {
-        FlyoutTop = FromHex("#E60C1020"),
-        FlyoutBottom = FromHex("#E6171F38"),
+        // Raised from #E6 to #F2: at 90% a bright desktop behind the acrylic
+        // lifted the surface enough to push muted text under the AA line.
+        FlyoutTop = FromHex("#F20C1020"),
+        FlyoutBottom = FromHex("#F2171F38"),
         ScreenIdleTop = FromHex("#FF262E44"),
         ScreenIdleBottom = FromHex("#FF1C2235"),
         Solids =
@@ -183,7 +185,9 @@ public static class ThemeManager
             ("VioletBrush", FromHex("#9D6BFF")),
             ("TextPrimaryBrush", FromHex("#F6F8FE")),
             ("TextSecondaryBrush", FromHex("#AEB7CC")),
-            ("TextMutedBrush", FromHex("#7E879C")),
+            // Lifted from #7E879C (~4.5:1 — right at the AA line) so muted text
+            // stays legible over the translucent flyout surface.
+            ("TextMutedBrush", FromHex("#98A2B8")),
             ("SuccessBrush", FromHex("#46E0A0")),
             ("ErrorBrush", FromHex("#FF7373")),
         ],

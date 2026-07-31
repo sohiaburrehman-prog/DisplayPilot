@@ -24,7 +24,9 @@ using ComboBox = System.Windows.Controls.ComboBox;
 using Cursors = System.Windows.Input.Cursors;
 using FontFamily = System.Windows.Media.FontFamily;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using Orientation = System.Windows.Controls.Orientation;
 using Rectangle = System.Windows.Shapes.Rectangle;
+using ToggleButton = System.Windows.Controls.Primitives.ToggleButton;
 
 namespace PrimaryDisplaySwap;
 
@@ -52,9 +54,11 @@ public partial class PanelWindow : Window
     private readonly SettingsService _settings;
 
     private bool _suppressStartupEvent;
+    private bool _suppressHdrEvent;
+    private string? _undoDeviceName;
+    private System.Windows.Threading.DispatcherTimer? _toastTimer;
     private bool _swapInProgress;
     private bool _loadingModeEditors;
-    private string _swapButtonIdleText = "Swap Displays";
     private readonly List<Action> _pendingModeLoads = [];
     private IReadOnlyList<MonitorInfo> _lastMapMonitors = Array.Empty<MonitorInfo>();
 
@@ -81,12 +85,6 @@ public partial class PanelWindow : Window
             }
         };
 
-        PanelTabs.SelectionChanged += (_, _) =>
-        {
-            // Populate first so the new tab's natural height is measurable.
-            LoadPendingModeEditors();
-            AnimatePanelHeight();
-        };
 
         MapScroll.SizeChanged += (_, _) => RebuildArrangementMapIfNeeded();
         MapScroll.PreviewMouseWheel += MapScroll_PreviewMouseWheel;
@@ -258,7 +256,6 @@ public partial class PanelWindow : Window
         RefreshProfilesSummary();
 
         MonitorList.Children.Clear();
-        MoreMonitorList.Children.Clear();
         _pendingModeLoads.Clear();
 
         IReadOnlyList<MonitorInfo> monitors;
@@ -272,92 +269,63 @@ public partial class PanelWindow : Window
             EmptyStateTitle.Text = "Could not read displays";
             EmptyState.Text = "Try reopening the panel or check the log file.";
             EmptyStateHost.Visibility = Visibility.Visible;
-            SwapButton.Visibility = Visibility.Collapsed;
             MapHost.Visibility = Visibility.Collapsed;
+            MapHint.Visibility = Visibility.Collapsed;
             _lastMapMonitors = Array.Empty<MonitorInfo>();
-            MoreEmptyStateHost.Visibility = Visibility.Visible;
             return;
         }
 
-        MoreEmptyStateHost.Visibility = monitors.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var monitor in monitors)
+        if (monitors.Count == 0)
         {
-            MoreMonitorList.Children.Add(BuildResolutionEntry(monitor));
-        }
-
-        LoadPendingModeEditors();
-
-        if (monitors.Count <= 1)
-        {
-            EmptyStateTitle.Text = monitors.Count == 0
-                ? "No displays detected"
-                : "Only one monitor connected";
-            EmptyState.Text = monitors.Count == 0
-                ? "Windows did not report any active displays."
-                : "Connect another display to swap or change primary.";
+            EmptyStateTitle.Text = "No displays detected";
+            EmptyState.Text = "Windows did not report any active displays.";
             EmptyStateHost.Visibility = Visibility.Visible;
-            SwapButton.Visibility = Visibility.Collapsed;
             MapHost.Visibility = Visibility.Collapsed;
+            MapHint.Visibility = Visibility.Collapsed;
             _lastMapMonitors = Array.Empty<MonitorInfo>();
             return;
         }
 
         EmptyStateHost.Visibility = Visibility.Collapsed;
-        SwapButton.Visibility = monitors.Count == 2 ? Visibility.Visible : Visibility.Collapsed;
 
-        if (monitors.Count == 2)
+        // The map is the primary control for choosing a display; with a single
+        // monitor there is nothing to arrange, so it is hidden.
+        if (monitors.Count > 1)
         {
-            var primary = monitors.First(m => m.IsPrimary);
-            var other = monitors.First(m => !m.IsPrimary);
-            var primaryName = MonitorDisplayHelper.GetDisplayName(primary, _settings.Current);
-            var otherName = MonitorDisplayHelper.GetDisplayName(other, _settings.Current);
-            _swapButtonIdleText = $"Swap {primary.Index + 1} ↔ {other.Index + 1}";
-            SwapButton.ToolTip = $"{primaryName} ↔ {otherName}";
-            if (!_swapInProgress)
-            {
-                SwapLabel.Text = _swapButtonIdleText;
-            }
+            BuildArrangementMap(monitors);
+            _lastMapMonitors = monitors;
+            MapHost.Visibility = Visibility.Visible;
+            MapHint.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            MapHost.Visibility = Visibility.Collapsed;
+            MapHint.Visibility = Visibility.Collapsed;
+            _lastMapMonitors = Array.Empty<MonitorInfo>();
         }
 
-        BuildArrangementMap(monitors);
-        _lastMapMonitors = monitors;
-        MapHost.Visibility = Visibility.Visible;
-
+        // One list: each row carries the mode controls for its own display.
         foreach (var monitor in monitors)
         {
-            MonitorList.Children.Add(BuildMonitorCard(monitor, monitors.Count > 2));
+            MonitorList.Children.Add(BuildDisplayRow(monitor, monitors.Count > 1));
         }
 
-        if (monitors.Count > 2)
-        {
-            ShowStatus("Click a monitor or the arrangement map to set primary.", success: null);
-        }
-        else if (string.IsNullOrWhiteSpace(StatusText.Text) || StatusText.Text.StartsWith("Click a monitor"))
-        {
-            StatusText.Text = string.Empty;
-        }
+        LoadPendingModeEditors();
 
-        if (IsVisible && PanelTabs.SelectedIndex == 0)
+        if (IsVisible)
         {
             PlayCardStagger();
         }
     }
 
-    /// <summary>Switches to the Advanced tab (resolution &amp; profiles).</summary>
-    public void FocusAdvancedTab()
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            Dispatcher.BeginInvoke(FocusAdvancedTab);
-            return;
-        }
-
-        PanelTabs.SelectedIndex = 1;
-    }
-
+    /// <summary>
+    /// Loads the resolution/refresh/HDR options for every row. Mode enumeration
+    /// hits the display driver, so it runs once per refresh rather than on
+    /// every expand.
+    /// </summary>
     private void LoadPendingModeEditors()
     {
-        if (PanelTabs.SelectedIndex != 1 || _pendingModeLoads.Count == 0 || _loadingModeEditors)
+        if (_pendingModeLoads.Count == 0 || _loadingModeEditors)
         {
             return;
         }
@@ -721,7 +689,12 @@ public partial class PanelWindow : Window
     /// Per-monitor resolution + refresh card for the Advanced tab. Modes load
     /// lazily when that tab is first selected to keep refreshes fast.
     /// </summary>
-    private UIElement BuildResolutionEntry(MonitorInfo monitor)
+    /// <summary>
+    /// One display row: a fixed-height header that sets primary on click, and a
+    /// collapsible detail area holding the resolution, refresh and HDR controls
+    /// for that same display. Replaces the old split across two tabs.
+    /// </summary>
+    private UIElement BuildDisplayRow(MonitorInfo monitor, bool canSetPrimary)
     {
         var deviceName = monitor.DeviceName;
 
@@ -743,6 +716,9 @@ public partial class PanelWindow : Window
             Margin = new Thickness(0, 0, 4, 0),
             IsEnabled = false,
         };
+        // Apply is created here but only shown once a change is staged — a
+        // full-weight accent button sitting lit with nothing to apply was the
+        // brightest no-op in the panel.
         var applyButton = new Button
         {
             Style = (Style)FindResource("AccentMiniButton"),
@@ -752,30 +728,74 @@ public partial class PanelWindow : Window
             IsEnabled = false,
         };
 
-        var grid = new Grid { Margin = new Thickness(0, 10, 0, 0) };
+        TextBlock FieldLabel(string text) => new()
+        {
+            Text = text,
+            FontFamily = (FontFamily)FindResource("UiFont"),
+            FontSize = 11,
+            Foreground = (Brush)FindResource("TextMutedBrush"),
+            Margin = new Thickness(0, 0, 0, 5),
+        };
+
+        var resolutionStack = new StackPanel();
+        resolutionStack.Children.Add(FieldLabel("Resolution"));
+        resolutionCombo.Margin = new Thickness(0);
+        resolutionStack.Children.Add(resolutionCombo);
+
+        var refreshStack = new StackPanel { Margin = new Thickness(8, 0, 0, 0), Width = 104 };
+        refreshStack.Children.Add(FieldLabel("Refresh"));
+        refreshCombo.Margin = new Thickness(0);
+        refreshCombo.Width = double.NaN;
+        refreshStack.Children.Add(refreshCombo);
+
+        var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(resolutionCombo, 0);
-        Grid.SetColumn(refreshCombo, 1);
-        Grid.SetColumn(applyButton, 2);
-        grid.Children.Add(resolutionCombo);
-        grid.Children.Add(refreshCombo);
-        grid.Children.Add(applyButton);
+        Grid.SetColumn(resolutionStack, 0);
+        Grid.SetColumn(refreshStack, 1);
+        grid.Children.Add(resolutionStack);
+        grid.Children.Add(refreshStack);
 
         // Post-apply confirmation strip: "Applied · reverting in 12s" + Keep.
         // Mirrors what Windows itself does for display-mode changes, so a bad
         // mode can't leave the screen unusable.
         var confirmRow = new RevertConfirmRow(this);
 
-        // HDR toggle: hidden unless the monitor reports HDR support.
-        var hdrCheck = new CheckBox
+        // HDR is a device state like "Start with Windows", so it uses the same
+        // switch rather than a checkbox, with a sub-line for bit depth or the
+        // reason it is unavailable at the current mode.
+        var hdrSwitch = new ToggleButton
         {
-            Style = (Style)FindResource("DarkCheckBox"),
-            Content = "HDR",
-            Margin = new Thickness(0, 10, 0, 0),
-            Visibility = Visibility.Collapsed,
+            Style = (Style)FindResource("ToggleSwitch"),
+            VerticalAlignment = VerticalAlignment.Center,
         };
+        var hdrTitle = new TextBlock
+        {
+            Text = "HDR",
+            FontFamily = (FontFamily)FindResource("UiFont"),
+            FontSize = 12.5,
+            Foreground = (Brush)FindResource("TextPrimaryBrush"),
+        };
+        var hdrSub = new TextBlock
+        {
+            Text = "Off",
+            FontFamily = (FontFamily)FindResource("UiFont"),
+            FontSize = 11,
+            Foreground = (Brush)FindResource("TextMutedBrush"),
+            Margin = new Thickness(0, 2, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var hdrTextStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        hdrTextStack.Children.Add(hdrTitle);
+        hdrTextStack.Children.Add(hdrSub);
+
+        var hdrRow = new Grid { Margin = new Thickness(0, 14, 0, 0), Visibility = Visibility.Collapsed };
+        hdrRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        hdrRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(hdrTextStack, 0);
+        Grid.SetColumn(hdrSwitch, 1);
+        hdrRow.Children.Add(hdrTextStack);
+        hdrRow.Children.Add(hdrSwitch);
 
         var loaded = false;
         var suppressComboEvents = false;
@@ -854,8 +874,11 @@ public partial class PanelWindow : Window
             var hdr = _displayManager.GetHdrStatus(deviceName);
             if (hdr is { Supported: true })
             {
-                hdrCheck.IsChecked = hdr.Enabled;
-                hdrCheck.Visibility = Visibility.Visible;
+                _suppressHdrEvent = true;
+                hdrSwitch.IsChecked = hdr.Enabled;
+                _suppressHdrEvent = false;
+                hdrSub.Text = hdr.Enabled ? "On · 10-bit" : "Off";
+                hdrRow.Visibility = Visibility.Visible;
             }
         }
 
@@ -869,7 +892,7 @@ public partial class PanelWindow : Window
             }
 
             PopulateRefreshRates();
-            applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
+            UpdatePendingState();
         };
         refreshCombo.SelectionChanged += (_, _) =>
         {
@@ -878,8 +901,35 @@ public partial class PanelWindow : Window
                 return;
             }
 
-            applyButton.IsEnabled = refreshCombo.SelectedItem is DisplayMode;
+            UpdatePendingState();
         };
+
+        // Shows the staged change (and Apply) only when the pickers differ from
+        // what the display is actually running.
+        void UpdatePendingState()
+        {
+            if (refreshCombo.SelectedItem is not DisplayMode chosen)
+            {
+                confirmRow.HidePending();
+                applyButton.IsEnabled = false;
+                return;
+            }
+
+            var current = _displayManager.GetCurrentMode(deviceName);
+            var changed = current is null || !current.Equals(chosen);
+
+            applyButton.IsEnabled = changed;
+            if (changed)
+            {
+                confirmRow.ShowPending($"Pending {chosen.Label}", applyButton);
+            }
+            else
+            {
+                confirmRow.HidePending();
+            }
+
+            AnimatePanelHeight();
+        }
 
         applyButton.Click += async (_, _) =>
         {
@@ -917,67 +967,186 @@ public partial class PanelWindow : Window
             }
         };
 
-        hdrCheck.Click += async (_, _) =>
+        async void HdrChanged(object sender, RoutedEventArgs args)
         {
-            var enable = hdrCheck.IsChecked == true;
+            if (_suppressHdrEvent)
+            {
+                return;
+            }
+
+            var enable = hdrSwitch.IsChecked == true;
             try
             {
-                hdrCheck.IsEnabled = false;
+                hdrSwitch.IsEnabled = false;
                 SetBusy(true, $"{(enable ? "Enabling" : "Disabling")} HDR…");
                 await Task.Run(() => _displayManager.SetHdrEnabled(deviceName, enable));
+                hdrSub.Text = enable ? "On · 10-bit" : "Off";
                 ShowStatus(
                     $"{MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current)}: HDR {(enable ? "on" : "off")}.",
                     success: true);
             }
             catch (Exception ex)
             {
-                hdrCheck.IsChecked = !enable;
+                _suppressHdrEvent = true;
+                hdrSwitch.IsChecked = !enable;
+                _suppressHdrEvent = false;
                 ShowStatus(ex.Message, success: false);
             }
             finally
             {
                 SetBusy(false);
-                hdrCheck.IsEnabled = true;
+                hdrSwitch.IsEnabled = true;
             }
-        };
+        }
 
-        var card = new Border
-        {
-            Background = (Brush)FindResource("CardBrush"),
-            BorderBrush = (Brush)FindResource("HairlineBrush"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(14, 12, 14, 12),
-            Margin = new Thickness(0, 0, 0, 8),
-        };
+        hdrSwitch.Checked += HdrChanged;
+        hdrSwitch.Unchecked += HdrChanged;
 
-        var header = new StackPanel();
-        header.Children.Add(new TextBlock
+        // ── Collapsed row (fixed 56 px so adding a display never reflows) ──
+        var glyph = BuildMonitorGlyph(monitor);
+
+        var nameText = new TextBlock
         {
-            Text = MonitorDisplayHelper.GetNumberedName(monitor, _settings.Current),
+            Text = MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current),
             FontFamily = (FontFamily)FindResource("UiFont"),
             FontSize = 12.5,
             FontWeight = FontWeights.SemiBold,
             Foreground = (Brush)FindResource("TextPrimaryBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        header.Children.Add(new TextBlock
+        };
+
+        var primaryDot = new System.Windows.Shapes.Ellipse
         {
-            Text = monitor.SpecsLabel,
+            Width = 5,
+            Height = 5,
+            Fill = (Brush)FindResource("AccentBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+            Visibility = monitor.IsPrimary ? Visibility.Visible : Visibility.Collapsed,
+        };
+
+        var statusText = new TextBlock
+        {
+            Text = monitor.IsPrimary
+                ? $"Primary · Display {monitor.Index + 1}"
+                : $"Display {monitor.Index + 1} · click to make primary",
             FontFamily = (FontFamily)FindResource("UiFont"),
             FontSize = 11,
-            Foreground = (Brush)FindResource("TextMutedBrush"),
-            Margin = new Thickness(0, 2, 0, 0),
+            FontWeight = monitor.IsPrimary ? FontWeights.SemiBold : FontWeights.Normal,
+            Foreground = monitor.IsPrimary
+                ? (Brush)FindResource("AccentHoverBrush")
+                : (Brush)FindResource("TextMutedBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+
+        var statusLine = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+        statusLine.Children.Add(primaryDot);
+        statusLine.Children.Add(statusText);
+
+        var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        textStack.Children.Add(nameText);
+        textStack.Children.Add(statusLine);
+
+        // Clicking anywhere on the row (except the chevron) sets primary.
+        var rowContent = new Grid
+        {
+            Background = Brushes.Transparent,
+            Height = 56,
+            Cursor = monitor.IsPrimary ? Cursors.Arrow : Cursors.Hand,
+        };
+        rowContent.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        rowContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(glyph, 0);
+        Grid.SetColumn(textStack, 1);
+        textStack.Margin = new Thickness(12, 0, 8, 0);
+        rowContent.Children.Add(glyph);
+        rowContent.Children.Add(textStack);
+
+        var chevron = new Button
+        {
+            Style = (Style)FindResource("CaptionButton"),
+            Content = "",
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Show resolution, refresh and HDR",
+        };
+        AutomationProperties.SetName(chevron, $"Show display settings for {MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current)}");
+
+        var headerGrid = new Grid { Margin = new Thickness(14, 0, 6, 0) };
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(rowContent, 0);
+        Grid.SetColumn(chevron, 1);
+        headerGrid.Children.Add(rowContent);
+        headerGrid.Children.Add(chevron);
+
+        // ── Expandable detail: mode controls for this display ──
+        var detail = new StackPanel
+        {
+            Visibility = Visibility.Collapsed,
+            Margin = new Thickness(14, 0, 14, 12),
+        };
+        detail.Children.Add(new Rectangle
+        {
+            Height = 1,
+            Fill = (Brush)FindResource("HairlineBrush"),
+            Margin = new Thickness(0, 0, 0, 12),
         });
-        header.Children.Add(CreateRenameLink(monitor));
+        detail.Children.Add(grid);
+        detail.Children.Add(hdrRow);
+        detail.Children.Add(confirmRow.Root);
+
+        if (!monitor.IsPrimary)
+        {
+            WireSetPrimaryActivation(rowContent, monitor.DeviceName,
+                MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current));
+        }
+
+        chevron.Click += (_, _) =>
+        {
+            var opening = detail.Visibility != Visibility.Visible;
+            CollapseAllRows(except: opening ? detail : null);
+            detail.Visibility = opening ? Visibility.Visible : Visibility.Collapsed;
+            chevron.Content = opening ? "" : "";
+            chevron.ToolTip = opening ? "Hide display settings" : "Show resolution, refresh and HDR";
+            if (opening)
+            {
+                FadeIn(detail);
+            }
+
+            AnimatePanelHeight();
+        };
 
         var content = new StackPanel();
-        content.Children.Add(header);
-        content.Children.Add(grid);
-        content.Children.Add(confirmRow.Root);
-        content.Children.Add(hdrCheck);
-        card.Child = content;
+        content.Children.Add(headerGrid);
+        content.Children.Add(detail);
+
+        var card = new Border
+        {
+            Background = (Brush)FindResource("CardBrush"),
+            BorderBrush = monitor.IsPrimary
+                ? new SolidColorBrush(Color.FromArgb(140, 0x4F, 0x8D, 0xFF))
+                : (Brush)FindResource("HairlineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Margin = new Thickness(0, 0, 0, 8),
+            Child = content,
+            Tag = detail,
+        };
+
         return card;
+    }
+
+    /// <summary>Collapses every expanded display row except <paramref name="except"/>.</summary>
+    private void CollapseAllRows(UIElement? except)
+    {
+        foreach (var child in MonitorList.Children)
+        {
+            if (child is Border { Tag: StackPanel panel } && !ReferenceEquals(panel, except))
+            {
+                panel.Visibility = Visibility.Collapsed;
+            }
+        }
     }
 
     /// <summary>
@@ -992,7 +1161,11 @@ public partial class PanelWindow : Window
 
         private readonly PanelWindow _owner;
         private readonly TextBlock _label;
+        private readonly Button _keepButton;
+        private readonly Button _revertButton;
+        private readonly Grid _buttonHost;
         private readonly System.Windows.Threading.DispatcherTimer _timer;
+        private Button? _apply;
 
         private int _remaining;
         private string _deviceName = string.Empty;
@@ -1008,7 +1181,7 @@ public partial class PanelWindow : Window
             _label = new TextBlock
             {
                 FontFamily = (FontFamily)owner.FindResource("UiFont"),
-                FontSize = 11.5,
+                FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Foreground = (Brush)owner.FindResource("TextPrimaryBrush"),
@@ -1034,6 +1207,9 @@ public partial class PanelWindow : Window
             };
             revertButton.Click += (_, _) => RevertNow();
 
+            _keepButton = keepButton;
+            _revertButton = revertButton;
+
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1044,6 +1220,7 @@ public partial class PanelWindow : Window
             grid.Children.Add(_label);
             grid.Children.Add(keepButton);
             grid.Children.Add(revertButton);
+            _buttonHost = grid;
 
             Root = new Border
             {
@@ -1052,7 +1229,7 @@ public partial class PanelWindow : Window
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(10, 8, 10, 8),
-                Margin = new Thickness(0, 10, 0, 0),
+                Margin = new Thickness(0, 12, 0, 0),
                 Visibility = Visibility.Collapsed,
                 Child = grid,
             };
@@ -1064,8 +1241,59 @@ public partial class PanelWindow : Window
             _timer.Tick += (_, _) => Tick();
         }
 
+        /// <summary>
+        /// Staged-change state: shows what is about to be applied plus the Apply
+        /// button, before anything touches the display.
+        /// </summary>
+        public void ShowPending(string text, Button applyButton)
+        {
+            _timer.Stop();
+            _previous = null;
+
+            _label.Text = text;
+            _label.Foreground = (Brush)_owner.FindResource("SwapBrush");
+            _keepButton.Visibility = Visibility.Collapsed;
+            _revertButton.Visibility = Visibility.Collapsed;
+
+            if (!_buttonHost.Children.Contains(applyButton))
+            {
+                Grid.SetColumn(applyButton, 2);
+                applyButton.Margin = new Thickness(8, 0, 0, 0);
+                applyButton.Height = 26;
+                _buttonHost.Children.Add(applyButton);
+            }
+
+            applyButton.Visibility = Visibility.Visible;
+            _apply = applyButton;
+
+            if (Root.Visibility != Visibility.Visible)
+            {
+                Root.Visibility = Visibility.Visible;
+                _owner.FadeIn(Root);
+            }
+        }
+
+        public void HidePending()
+        {
+            if (_previous is not null)
+            {
+                return; // a post-apply countdown owns the row
+            }
+
+            _timer.Stop();
+            Root.Visibility = Visibility.Collapsed;
+        }
+
         public void Start(string deviceName, DisplayMode previous, DisplayMode applied)
         {
+            if (_apply is not null)
+            {
+                _apply.Visibility = Visibility.Collapsed;
+            }
+
+            _label.Foreground = (Brush)_owner.FindResource("TextPrimaryBrush");
+            _keepButton.Visibility = Visibility.Visible;
+            _revertButton.Visibility = Visibility.Visible;
             _deviceName = deviceName;
             _previous = previous;
             _appliedLabel = applied.Label;
@@ -1466,36 +1694,6 @@ public partial class PanelWindow : Window
         return canvas;
     }
 
-    private async void Swap_Click(object sender, RoutedEventArgs e)
-    {
-        if (_swapInProgress)
-        {
-            return;
-        }
-
-        try
-        {
-            _swapInProgress = true;
-            SetBusy(true, "Swapping…");
-
-            var newPrimary = await Task.Run(() => _displayManager.SwapPrimaryBetweenTwoMonitors());
-
-            await PlayMapSwapAnimationAsync();
-            RefreshMonitors();
-            PulsePrimaryTile();
-            ShowStatus($"Swapped — {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.", success: true);
-        }
-        catch (Exception ex)
-        {
-            ShowStatus(ex.Message, success: false);
-        }
-        finally
-        {
-            _swapInProgress = false;
-            SetBusy(false);
-        }
-    }
-
     private async Task SetPrimaryAsync(string deviceName, string monitorName)
     {
         if (_swapInProgress)
@@ -1508,11 +1706,18 @@ public partial class PanelWindow : Window
             _swapInProgress = true;
             SetBusy(true, $"Making {monitorName} primary…");
 
+            // Remember what we're leaving so the toast can offer Undo — a
+            // display swap is the change users most often want to take back.
+            var previousPrimary = _displayManager.GetMonitors().FirstOrDefault(m => m.IsPrimary);
+
             var newPrimary = await Task.Run(() => _displayManager.SetPrimaryByDeviceName(deviceName));
 
             RefreshMonitors();
             PulsePrimaryTile();
-            ShowStatus($"Primary set to {MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)}.", success: true);
+            ShowStatus(
+                $"{MonitorDisplayHelper.GetDisplayName(newPrimary, _settings.Current)} is now primary.",
+                success: true,
+                undoDeviceName: previousPrimary?.DeviceName);
         }
         catch (Exception ex)
         {
@@ -1527,26 +1732,8 @@ public partial class PanelWindow : Window
 
     private void SetBusy(bool busy, string? message = null)
     {
-        SwapButton.IsEnabled = !busy;
         MonitorList.IsEnabled = !busy;
-        MoreMonitorList.IsEnabled = !busy;
         MapHost.IsEnabled = !busy;
-        PanelTabs.IsEnabled = !busy;
-
-        if (busy)
-        {
-            SwapLabel.Text = message ?? "Working…";
-            var spin = new DoubleAnimation(0, 360, TimeSpan.FromMilliseconds(900))
-            {
-                RepeatBehavior = RepeatBehavior.Forever,
-            };
-            SwapIconRotate.BeginAnimation(RotateTransform.AngleProperty, spin);
-        }
-        else
-        {
-            SwapLabel.Text = _swapButtonIdleText;
-            SwapIconRotate.BeginAnimation(RotateTransform.AngleProperty, null);
-        }
 
         if (busy && message != null)
         {
@@ -1554,17 +1741,46 @@ public partial class PanelWindow : Window
         }
     }
 
-    private void ShowStatus(string message, bool? success)
+    /// <summary>
+    /// Inline confirmation strip at the foot of the panel. Replaces the old
+    /// status line: feedback for a display change needs to be noticed, and a
+    /// primary swap needs an Undo.
+    /// </summary>
+    private void ShowStatus(string message, bool? success, string? undoDeviceName = null)
     {
-        StatusText.Text = message;
-        StatusText.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
-        StatusText.Foreground = success switch
+        _undoDeviceName = undoDeviceName;
+        ToastText.Text = message;
+        ToastUndo.Visibility = undoDeviceName is null ? Visibility.Collapsed : Visibility.Visible;
+
+        var (icon, accent, background) = success switch
         {
-            true => (Brush)FindResource("SuccessBrush"),
-            false => (Brush)FindResource("ErrorBrush"),
-            null => (Brush)FindResource("TextMutedBrush"),
+            true => ("", (Brush)FindResource("SuccessBrush"), Color.FromArgb(0x1A, 0x46, 0xE0, 0xA0)),
+            false => ("", (Brush)FindResource("ErrorBrush"), Color.FromArgb(0x1A, 0xFF, 0x73, 0x73)),
+            null => ("", (Brush)FindResource("TextMutedBrush"), Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
         };
+
+        ToastIcon.Text = icon;
+        ToastIcon.Foreground = accent;
+        ToastHost.Background = new SolidColorBrush(background);
+        ToastHost.BorderBrush = accent;
+
+        if (ToastHost.Visibility != Visibility.Visible)
+        {
+            ToastHost.Visibility = Visibility.Visible;
+            FadeIn(ToastHost);
+        }
+
+        // Auto-dismiss transient messages so the panel does not accumulate
+        // stale state; errors stay until the next action.
+        _toastTimer ??= new System.Windows.Threading.DispatcherTimer();
+        _toastTimer.Stop();
+        if (success != false)
+        {
+            _toastTimer.Interval = TimeSpan.FromSeconds(undoDeviceName is null ? 5 : 8);
+            _toastTimer.Tick -= OnToastExpired;
+            _toastTimer.Tick += OnToastExpired;
+            _toastTimer.Start();
+        }
 
         if (success == false)
         {
@@ -1597,6 +1813,39 @@ public partial class PanelWindow : Window
         }
     }
 
+    private void OnToastExpired(object? sender, EventArgs e)
+    {
+        _toastTimer?.Stop();
+        _undoDeviceName = null;
+        ToastHost.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Restores the display that was primary before the last change.</summary>
+    private async void ToastUndo_Click(object sender, RoutedEventArgs e)
+    {
+        var device = _undoDeviceName;
+        if (string.IsNullOrEmpty(device))
+        {
+            return;
+        }
+
+        _undoDeviceName = null;
+        ToastUndo.Visibility = Visibility.Collapsed;
+
+        try
+        {
+            var restored = await Task.Run(() => _displayManager.SetPrimaryByDeviceName(device));
+            RefreshMonitors();
+            ShowStatus(
+                $"{MonitorDisplayHelper.GetDisplayName(restored, _settings.Current)} restored as primary.",
+                success: true);
+        }
+        catch (Exception ex)
+        {
+            ShowStatus(ex.Message, success: false);
+        }
+    }
+
     private void Hide_Click(object sender, RoutedEventArgs e)
     {
         HideToTray();
@@ -1606,7 +1855,7 @@ public partial class PanelWindow : Window
     {
         if (!UrlLaunchHelper.TryOpenWebOrMailUrl(AppInfo.SupportMailtoUri))
         {
-            StatusText.Text = $"Help: {AppInfo.SupportEmail}";
+            ShowStatus($"Help: {AppInfo.SupportEmail}", success: null);
         }
     }
 

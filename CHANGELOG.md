@@ -4,6 +4,24 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-07-31
+
+Flyout rebuilt around the design review: one monitor list instead of two tabs.
+
+### Changed
+- **One list, no tabs** — Displays and Advanced are merged. Each display is a single row that expands in place to reveal the resolution, refresh and HDR controls for that display, so a monitor is never identified twice in two places
+- **The map is the control** — the arrangement diagram sits at the top with a plain "Click a display to make it primary" hint; rows are a fixed 56 px so adding a display no longer reflows the list
+- **Apply appears only when something is pending** — staged changes show "Pending 3840 × 2160 · 240 Hz" with Apply, and the post-apply revert countdown still guards against a mode the monitor cannot display
+- **HDR is a switch, not a checkbox** — it is a device state like "Start with Windows", now with a sub-line for its status
+- **Inline confirmation with Undo** — a primary change reports in a toast at the foot of the panel and can be undone in one click, replacing the passive status line
+- **Type scale collapsed to four sizes** (11 caption / 12.5 body / 14 title / 16 window title) and section micro-headers removed — each labelled one or two items
+- **One footer row** — Settings · Activity log · Help; the byline moves out of the flyout
+
+### Fixed
+- **Muted text contrast** — lifted to `#98A2B8` and the flyout surface raised to 94% opacity, so captions stay legible over acrylic on a bright desktop
+- **Duplicated mode readout** — the static "3840×2160 · 240 Hz" line is gone; the pickers are the readout
+- **Rename had two entry points** — the per-card link is removed in favour of a single home
+
 ## [1.9.2] — 2026-07-25
 
 ### Fixed
