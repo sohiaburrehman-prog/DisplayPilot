@@ -503,6 +503,13 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // Bolt: Prevent expensive GetMonitors() (QueryActiveConfig) polling
+        // when there are no active tracked processes and we aren't currently in a tracked session.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
