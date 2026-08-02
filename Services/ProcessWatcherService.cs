@@ -503,6 +503,15 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        // ⚡ Bolt: Early return when there are no active candidates and no previous winner to restore.
+        // This avoids calling the expensive GetMonitors() API on every polling interval when idle.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            _forceReconcile = false;
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
