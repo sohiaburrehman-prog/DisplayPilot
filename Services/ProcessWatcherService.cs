@@ -478,6 +478,15 @@ public sealed class ProcessWatcherService : IDisposable
         var ordered = ProfileConflictResolver.OrderCandidates(activeCandidates, rule).ToList();
         var preferred = ordered.FirstOrDefault();
 
+        // ⚡ Bolt: Fast path to avoid calling GetMonitors() (and its expensive Win32 OS queries)
+        // on every timer tick when no profiles are matched and no session is active.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            _forceReconcile = false;
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         if (preferred is not null &&
             !_forceReconcile &&
             _winnerSnapshot is not null &&
