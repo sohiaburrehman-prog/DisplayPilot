@@ -503,6 +503,14 @@ public sealed class ProcessWatcherService : IDisposable
             return;
         }
 
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            // ⚡ Bolt: Skip expensive _displayManager.GetMonitors() on idle timer ticks.
+            _forceReconcile = false;
+            SetCurrentActiveProfile(null);
+            return;
+        }
+
         var monitors = _displayManager.GetMonitors();
         _forceReconcile = false;
         ProfileConflictResolver.Candidate? winner = null;
