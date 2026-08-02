@@ -478,6 +478,15 @@ public sealed class ProcessWatcherService : IDisposable
         var ordered = ProfileConflictResolver.OrderCandidates(activeCandidates, rule).ToList();
         var preferred = ordered.FirstOrDefault();
 
+        // Fast path: nothing is running and no previous session needs restoring.
+        // Avoids calling _displayManager.GetMonitors() (and its expensive Win32 queries) every polling interval.
+        if (preferred is null && _winnerSnapshot is null)
+        {
+            _forceReconcile = false;
+            EndAutomationSession(Array.Empty<MonitorInfo>());
+            return;
+        }
+
         if (preferred is not null &&
             !_forceReconcile &&
             _winnerSnapshot is not null &&
