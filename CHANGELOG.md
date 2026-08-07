@@ -4,6 +4,10 @@ All notable changes to DisplayPilot are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- **Revert countdown was invisible and fired silently** — applying a resolution or refresh change rebuilds the display rows, which detached the countdown strip from the window; the timer kept running, so the mode reverted roughly twelve seconds later with no visible warning and no way to press Keep. The countdown now lives in the panel's confirmation toast, which survives the rebuild
+- **Stale chevron on collapsed rows** — opening a second display row closed the first without resetting its chevron, leaving two rows both showing the expanded glyph
+
 ## [1.10.0] — 2026-07-31
 
 Flyout rebuilt around the design review: one monitor list instead of two tabs.

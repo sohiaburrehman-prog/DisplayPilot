@@ -343,7 +343,7 @@
                                    Margin="10,0,0,0">
                             <Hyperlink Click="ToastUndo_Click"
                                        Foreground="{StaticResource AccentHoverBrush}"
-                                       TextDecorations="{x:Null}">Undo</Hyperlink>
+                                       TextDecorations="{x:Null}"><Run x:Name="ToastActionText" Text="Undo" /></Hyperlink>
                         </TextBlock>
                     </Grid>
                 </Border>

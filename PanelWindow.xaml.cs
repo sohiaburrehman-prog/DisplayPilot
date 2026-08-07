@@ -255,6 +255,11 @@ public partial class PanelWindow : Window
 
         RefreshProfilesSummary();
 
+        // Rows are about to be discarded — drop references to the open one so
+        // CollapseOpenRow() can never touch a detached element.
+        _openDetail = null;
+        _openChevron = null;
+
         MonitorList.Children.Clear();
         _pendingModeLoads.Clear();
 
@@ -490,63 +495,6 @@ public partial class PanelWindow : Window
             Canvas.SetTop(hint, layout.ContentHeight + 2);
             ArrangementCanvas.Children.Add(hint);
         }
-    }
-
-    /// <summary>When exactly two tiles are on the map, animates them sliding
-    /// past each other to trade places — the visual counterpart of a swap.
-    /// Completes (roughly) when the slide finishes so the caller can rebuild.</summary>
-    private Task PlayMapSwapAnimationAsync()
-    {
-        var tiles = ArrangementCanvas.Children.OfType<Border>()
-            .Where(b => b.Tag is MonitorInfo)
-            .ToList();
-
-        if (tiles.Count != 2)
-        {
-            return Task.CompletedTask;
-        }
-
-        var a = tiles[0];
-        var b = tiles[1];
-        var aLeft = Canvas.GetLeft(a);
-        var bLeft = Canvas.GetLeft(b);
-        if (double.IsNaN(aLeft) || double.IsNaN(bLeft))
-        {
-            return Task.CompletedTask;
-        }
-
-        var tcs = new TaskCompletionSource();
-        var duration = TimeSpan.FromMilliseconds(320);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
-
-        // Lift the tiles a touch and arc them so they don't just overlap flatly.
-        foreach (var tile in tiles)
-        {
-            tile.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
-            tile.RenderTransform = new TranslateTransform();
-        }
-
-        System.Windows.Controls.Panel.SetZIndex(a, 10);
-
-        var slideA = new DoubleAnimation(aLeft, bLeft, duration) { EasingFunction = ease };
-        var slideB = new DoubleAnimation(bLeft, aLeft, duration) { EasingFunction = ease };
-
-        var arc = new DoubleAnimation
-        {
-            From = 0,
-            To = -10,
-            Duration = TimeSpan.FromMilliseconds(160),
-            AutoReverse = true,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
-        };
-
-        slideB.Completed += (_, _) => tcs.TrySetResult();
-        a.BeginAnimation(Canvas.LeftProperty, slideA);
-        b.BeginAnimation(Canvas.LeftProperty, slideB);
-        ((TranslateTransform)a.RenderTransform).BeginAnimation(TranslateTransform.YProperty, arc);
-        ((TranslateTransform)b.RenderTransform).BeginAnimation(TranslateTransform.YProperty, (DoubleAnimation)arc.Clone());
-
-        return tcs.Task;
     }
 
     /// <summary>Quick scale-and-fade "pop" on the current primary tile after a
@@ -948,12 +896,19 @@ public partial class PanelWindow : Window
                 SetBusy(true, $"Applying {chosen.Label}…");
                 await Task.Run(() => _displayManager.ApplyDisplayMode(deviceName, chosen));
                 RefreshMonitors();
-                ShowStatus($"{MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current)}: applied {chosen.Label}.", success: true);
-                PulseApplySuccess(applyButton);
 
+                // The countdown must live in the toast, not in this card:
+                // RefreshMonitors() above rebuilds every row, so anything inside
+                // the card is detached from the visual tree by this point.
                 if (previous is not null && !previous.Equals(chosen))
                 {
-                    StartRevertCountdown(confirmRow, deviceName, previous, chosen);
+                    StartRevertCountdown(deviceName, previous, chosen);
+                }
+                else
+                {
+                    ShowStatus(
+                        $"{MonitorDisplayHelper.GetDisplayName(monitor, _settings.Current)}: applied {chosen.Label}.",
+                        success: true);
                 }
             }
             catch (Exception ex)
@@ -1105,12 +1060,18 @@ public partial class PanelWindow : Window
         chevron.Click += (_, _) =>
         {
             var opening = detail.Visibility != Visibility.Visible;
-            CollapseAllRows(except: opening ? detail : null);
-            detail.Visibility = opening ? Visibility.Visible : Visibility.Collapsed;
-            chevron.Content = opening ? "" : "";
-            chevron.ToolTip = opening ? "Hide display settings" : "Show resolution, refresh and HDR";
+
+            // Always close whatever was open first, resetting its chevron —
+            // collapsing the panel alone left a stale "expanded" glyph behind.
+            CollapseOpenRow();
+
             if (opening)
             {
+                detail.Visibility = Visibility.Visible;
+                chevron.Content = "";
+                chevron.ToolTip = "Hide display settings";
+                _openDetail = detail;
+                _openChevron = chevron;
                 FadeIn(detail);
             }
 
@@ -1137,16 +1098,25 @@ public partial class PanelWindow : Window
         return card;
     }
 
-    /// <summary>Collapses every expanded display row except <paramref name="except"/>.</summary>
-    private void CollapseAllRows(UIElement? except)
+    private StackPanel? _openDetail;
+    private Button? _openChevron;
+
+    /// <summary>Closes the currently expanded display row and resets its chevron.</summary>
+    private void CollapseOpenRow()
     {
-        foreach (var child in MonitorList.Children)
+        if (_openDetail is not null)
         {
-            if (child is Border { Tag: StackPanel panel } && !ReferenceEquals(panel, except))
-            {
-                panel.Visibility = Visibility.Collapsed;
-            }
+            _openDetail.Visibility = Visibility.Collapsed;
         }
+
+        if (_openChevron is not null)
+        {
+            _openChevron.Content = "";
+            _openChevron.ToolTip = "Show resolution, refresh and HDR";
+        }
+
+        _openDetail = null;
+        _openChevron = null;
     }
 
     /// <summary>
@@ -1155,22 +1125,20 @@ public partial class PanelWindow : Window
     /// countdown expires, the previous mode is restored — the safety net for a
     /// mode the monitor cannot actually display.
     /// </summary>
+    /// <summary>
+    /// Staged-change strip inside a display row: shows the mode that is about to
+    /// be applied plus the Apply button, so Apply is only ever visible when
+    /// there is something to apply.
+    ///
+    /// The post-apply revert countdown deliberately does NOT live here — the row
+    /// is rebuilt by RefreshMonitors() the moment a mode is applied, which would
+    /// detach this element from the visual tree. See StartRevertCountdown().
+    /// </summary>
     private sealed class RevertConfirmRow
     {
-        private const int CountdownSeconds = 12;
-
         private readonly PanelWindow _owner;
         private readonly TextBlock _label;
-        private readonly Button _keepButton;
-        private readonly Button _revertButton;
         private readonly Grid _buttonHost;
-        private readonly System.Windows.Threading.DispatcherTimer _timer;
-        private Button? _apply;
-
-        private int _remaining;
-        private string _deviceName = string.Empty;
-        private string _appliedLabel = string.Empty;
-        private DisplayMode? _previous;
 
         public Border Root { get; }
 
@@ -1184,42 +1152,14 @@ public partial class PanelWindow : Window
                 FontSize = 11,
                 VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                Foreground = (Brush)owner.FindResource("TextPrimaryBrush"),
+                Foreground = (Brush)owner.FindResource("SwapBrush"),
             };
-
-            var keepButton = new Button
-            {
-                Style = (Style)owner.FindResource("MiniButton"),
-                Content = "Keep",
-                Height = 26,
-                MinWidth = 54,
-                Margin = new Thickness(8, 0, 0, 0),
-            };
-            keepButton.Click += (_, _) => Keep();
-
-            var revertButton = new Button
-            {
-                Style = (Style)owner.FindResource("MiniButton"),
-                Content = "Revert",
-                Height = 26,
-                MinWidth = 54,
-                Margin = new Thickness(6, 0, 0, 0),
-            };
-            revertButton.Click += (_, _) => RevertNow();
-
-            _keepButton = keepButton;
-            _revertButton = revertButton;
 
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetColumn(_label, 0);
-            Grid.SetColumn(keepButton, 1);
-            Grid.SetColumn(revertButton, 2);
             grid.Children.Add(_label);
-            grid.Children.Add(keepButton);
-            grid.Children.Add(revertButton);
             _buttonHost = grid;
 
             Root = new Border
@@ -1233,38 +1173,21 @@ public partial class PanelWindow : Window
                 Visibility = Visibility.Collapsed,
                 Child = grid,
             };
-
-            _timer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromSeconds(1),
-            };
-            _timer.Tick += (_, _) => Tick();
         }
 
-        /// <summary>
-        /// Staged-change state: shows what is about to be applied plus the Apply
-        /// button, before anything touches the display.
-        /// </summary>
         public void ShowPending(string text, Button applyButton)
         {
-            _timer.Stop();
-            _previous = null;
-
             _label.Text = text;
-            _label.Foreground = (Brush)_owner.FindResource("SwapBrush");
-            _keepButton.Visibility = Visibility.Collapsed;
-            _revertButton.Visibility = Visibility.Collapsed;
 
             if (!_buttonHost.Children.Contains(applyButton))
             {
-                Grid.SetColumn(applyButton, 2);
+                Grid.SetColumn(applyButton, 1);
                 applyButton.Margin = new Thickness(8, 0, 0, 0);
                 applyButton.Height = 26;
                 _buttonHost.Children.Add(applyButton);
             }
 
             applyButton.Visibility = Visibility.Visible;
-            _apply = applyButton;
 
             if (Root.Visibility != Visibility.Visible)
             {
@@ -1273,94 +1196,7 @@ public partial class PanelWindow : Window
             }
         }
 
-        public void HidePending()
-        {
-            if (_previous is not null)
-            {
-                return; // a post-apply countdown owns the row
-            }
-
-            _timer.Stop();
-            Root.Visibility = Visibility.Collapsed;
-        }
-
-        public void Start(string deviceName, DisplayMode previous, DisplayMode applied)
-        {
-            if (_apply is not null)
-            {
-                _apply.Visibility = Visibility.Collapsed;
-            }
-
-            _label.Foreground = (Brush)_owner.FindResource("TextPrimaryBrush");
-            _keepButton.Visibility = Visibility.Visible;
-            _revertButton.Visibility = Visibility.Visible;
-            _deviceName = deviceName;
-            _previous = previous;
-            _appliedLabel = applied.Label;
-            _remaining = CountdownSeconds;
-
-            UpdateLabel();
-            Root.Visibility = Visibility.Visible;
-            _owner.FadeIn(Root);
-            _timer.Start();
-        }
-
-        private void UpdateLabel() =>
-            _label.Text = $"Applied {_appliedLabel} · reverting in {_remaining}s";
-
-        private void Tick()
-        {
-            _remaining--;
-            if (_remaining > 0)
-            {
-                UpdateLabel();
-                return;
-            }
-
-            RevertNow();
-        }
-
-        private void Keep()
-        {
-            Stop();
-            _owner.ShowStatus("Display mode kept.", success: true);
-        }
-
-        private async void RevertNow()
-        {
-            var previous = _previous;
-            var device = _deviceName;
-            Stop();
-
-            if (previous is null || string.IsNullOrEmpty(device))
-            {
-                return;
-            }
-
-            try
-            {
-                await Task.Run(() => _owner._displayManager.ApplyDisplayMode(device, previous));
-                _owner.RefreshMonitors();
-                _owner.ShowStatus($"Reverted to {previous.Label}.", success: true);
-            }
-            catch (Exception ex)
-            {
-                _owner.ShowStatus(ex.Message, success: false);
-            }
-        }
-
-        public void Stop()
-        {
-            _timer.Stop();
-            Root.Visibility = Visibility.Collapsed;
-            _previous = null;
-        }
-    }
-
-    private void StartRevertCountdown(
-        RevertConfirmRow row, string deviceName, DisplayMode previous, DisplayMode applied)
-    {
-        row.Start(deviceName, previous, applied);
+        public void HidePending() => Root.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>Brief accent→green flash on a button after a successful action.</summary>
@@ -1820,9 +1656,123 @@ public partial class PanelWindow : Window
         ToastHost.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>Restores the display that was primary before the last change.</summary>
+    // ─────────── Post-apply revert countdown (lives in the toast) ───────────
+
+    private System.Windows.Threading.DispatcherTimer? _revertTimer;
+    private string _revertDeviceName = string.Empty;
+    private string _revertAppliedLabel = string.Empty;
+    private DisplayMode? _revertPreviousMode;
+    private int _revertRemaining;
+
+    private const int RevertCountdownSeconds = 12;
+
+    /// <summary>
+    /// After a resolution/refresh change, counts down and restores the previous
+    /// mode unless the user confirms — the safety net for a mode the monitor
+    /// cannot actually display. Hosted in the toast because the per-display card
+    /// is rebuilt by RefreshMonitors() as soon as the mode is applied.
+    /// </summary>
+    private void StartRevertCountdown(string deviceName, DisplayMode previous, DisplayMode applied)
+    {
+        _revertDeviceName = deviceName;
+        _revertPreviousMode = previous;
+        _revertAppliedLabel = applied.Label;
+        _revertRemaining = RevertCountdownSeconds;
+
+        _revertTimer ??= new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _revertTimer.Stop();
+        _revertTimer.Tick -= OnRevertTick;
+        _revertTimer.Tick += OnRevertTick;
+
+        ShowRevertToast();
+        _revertTimer.Start();
+    }
+
+    private void ShowRevertToast()
+    {
+        // Reuse the toast, but drive it directly so the auto-dismiss timer in
+        // ShowStatus cannot hide the countdown out from under the user.
+        _toastTimer?.Stop();
+        _undoDeviceName = null;
+
+        ToastText.Text = $"Applied {_revertAppliedLabel} · reverting in {_revertRemaining}s";
+        ToastIcon.Text = "";
+        var warn = (Brush)FindResource("SwapBrush");
+        ToastIcon.Foreground = warn;
+        ToastHost.BorderBrush = warn;
+        ToastHost.Background = new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0x95, 0x00));
+
+        ToastActionText.Text = "Keep";
+        ToastUndo.Visibility = Visibility.Visible;
+
+        if (ToastHost.Visibility != Visibility.Visible)
+        {
+            ToastHost.Visibility = Visibility.Visible;
+            FadeIn(ToastHost);
+        }
+    }
+
+    private void OnRevertTick(object? sender, EventArgs e)
+    {
+        _revertRemaining--;
+        if (_revertRemaining > 0)
+        {
+            ToastText.Text = $"Applied {_revertAppliedLabel} · reverting in {_revertRemaining}s";
+            return;
+        }
+
+        RevertModeNow();
+    }
+
+    private void KeepMode()
+    {
+        _revertTimer?.Stop();
+        _revertPreviousMode = null;
+        ToastActionText.Text = "Undo";
+        ShowStatus($"Kept {_revertAppliedLabel}.", success: true);
+    }
+
+    private async void RevertModeNow()
+    {
+        _revertTimer?.Stop();
+
+        var previous = _revertPreviousMode;
+        var device = _revertDeviceName;
+        _revertPreviousMode = null;
+        ToastActionText.Text = "Undo";
+
+        if (previous is null || string.IsNullOrEmpty(device))
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() => _displayManager.ApplyDisplayMode(device, previous));
+            RefreshMonitors();
+            ShowStatus($"Reverted to {previous.Label} — the change was not confirmed.", success: null);
+        }
+        catch (Exception ex)
+        {
+            ShowStatus(ex.Message, success: false);
+        }
+    }
+
+    /// <summary>
+    /// The toast's action link: confirms a pending mode change when a revert
+    /// countdown is running, otherwise undoes the last primary change.
+    /// </summary>
     private async void ToastUndo_Click(object sender, RoutedEventArgs e)
     {
+        if (_revertPreviousMode is not null)
+        {
+            KeepMode();
+            return;
+        }
+
         var device = _undoDeviceName;
         if (string.IsNullOrEmpty(device))
         {
